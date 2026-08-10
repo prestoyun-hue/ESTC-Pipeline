@@ -1,0 +1,6 @@
+{
+  "name": "ESTC Sales Pipeline",
+  "description": "Supabase Client 세팅 및 역할(sales_rep, manager, admin) 기반 로그인/회원가입과 영업 파이프라인 관리 시스템",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
