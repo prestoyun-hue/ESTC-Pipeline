@@ -109,12 +109,8 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
   const [activityType, setActivityType] = useState<string>(''); // 진행 형태 (기본: 선택 안됨, 필수)
   const [title, setTitle] = useState<string>('');
 
-  // 변경 히스토리 이력 상태 (개별 수정 및 삭제 가능)
+  // 변경 히스토리 이력 상태 (삭제만 가능)
   const [historyList, setHistoryList] = useState<DealHistoryItem[]>([]);
-  const [editingHistoryId, setEditingHistoryId] = useState<string | null>(null);
-  const [editHistoryChanges, setEditHistoryChanges] = useState<string>('');
-  const [editHistoryNote, setEditHistoryNote] = useState<string>('');
-  const [editHistoryActivityType, setEditHistoryActivityType] = useState<string>('');
 
   // 처리 상태 및 피드백
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -250,7 +246,6 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
       setTitle('');
       setHistoryList([]);
     }
-    setEditingHistoryId(null);
     setToastMessage(null);
   }, [isOpen, dealToEdit, currentUserId, currentUserName, isSalesRep]);
 
@@ -265,35 +260,6 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
       setToastMessage({ type: 'success', text: '히스토리 이력이 삭제되었습니다. (저장 시 적용됨)' });
       setHistoryToDelete(null);
     }
-  };
-
-  // 히스토리 수정 시작 핸들러
-  const handleStartEditHistory = (item: DealHistoryItem) => {
-    setEditingHistoryId(item.id);
-    setEditHistoryChanges(item.changes || '');
-    setEditHistoryNote(item.note || '');
-    setEditHistoryActivityType(item.activity_type || '미팅');
-  };
-
-  // 히스토리 수정 저장 핸들러
-  const handleSaveEditHistory = (histId: string) => {
-    if (!editHistoryChanges.trim()) {
-      alert('변경 요약 내용을 입력해 주세요.');
-      return;
-    }
-    setHistoryList(prev => prev.map(h => {
-      if (h.id === histId) {
-        return {
-          ...h,
-          changes: editHistoryChanges.trim(),
-          note: editHistoryNote.trim() || undefined,
-          activity_type: editHistoryActivityType || undefined
-        };
-      }
-      return h;
-    }));
-    setEditingHistoryId(null);
-    setToastMessage({ type: 'success', text: '히스토리 항목이 수정되었습니다. (저장 시 적용됨)' });
   };
 
   // 파이프라인 단계 변경 시 진행률(Probability) 자동 연동
@@ -1180,7 +1146,7 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
 
           </div>
 
-          {/* 섹션 5: 변경 히스토리 (History) 타임라인 - 삭제 및 개별 수정 가능 */}
+          {/* 섹션 5: 변경 히스토리 (History) 타임라인 - 삭제만 가능 */}
           {historyList && historyList.length > 0 && (
             <div className="pt-2 border-t border-slate-100">
               <div className="flex items-center justify-between mb-3">
@@ -1188,131 +1154,53 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
                   <History className="w-4 h-4 text-blue-600" />
                   <span>5. 변경 히스토리 이력 ({historyList.length}건)</span>
                 </h4>
-                <span className="text-[11px] text-slate-400">각 항목을 직접 수정하거나 삭제할 수 있습니다.</span>
+                <span className="text-[11px] text-slate-400">불필요한 히스토리 항목은 삭제할 수 있습니다.</span>
               </div>
 
               <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-3.5 max-h-56 overflow-y-auto space-y-2.5">
-                {historyList.map((h, idx) => {
-                  const isEditing = editingHistoryId === h.id;
+                {historyList.map((h, idx) => (
+                  <div key={h.id || idx} className="bg-white p-3 rounded-xl border border-slate-200/80 text-xs shadow-2xs space-y-1.5 group hover:border-slate-300 transition-all">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <div className="flex items-center space-x-2">
+                        <span className="flex items-center space-x-1 font-bold text-blue-900">
+                          <Clock className="w-3 h-3 text-blue-500" />
+                          <span>{h.updated_at}</span>
+                        </span>
 
-                  if (isEditing) {
-                    return (
-                      <div key={h.id || idx} className="bg-amber-50/80 p-3 rounded-xl border border-amber-300 text-xs shadow-xs space-y-2">
-                        <div className="flex items-center justify-between font-bold text-amber-900 text-[11px]">
-                          <span>히스토리 이력 수정 (일시: {h.updated_at})</span>
-                          <span className="text-[10px] text-amber-700">작성자: {h.updated_by_name || '담당자'}</span>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div className="sm:col-span-2">
-                            <label className="block text-[10px] font-bold text-slate-700 mb-0.5">변경 요약 내용</label>
-                            <input
-                              type="text"
-                              value={editHistoryChanges}
-                              onChange={(e) => setEditHistoryChanges(e.target.value)}
-                              className="w-full p-1.5 bg-white border border-amber-300 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[10px] font-bold text-slate-700 mb-0.5">진행 형태</label>
-                            <select
-                              value={editHistoryActivityType}
-                              onChange={(e) => setEditHistoryActivityType(e.target.value)}
-                              className="w-full p-1.5 bg-white border border-amber-300 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
-                            >
-                              <option value="통화">통화</option>
-                              <option value="미팅">미팅</option>
-                              <option value="이메일">이메일</option>
-                              <option value="기타">기타</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-700 mb-0.5">상세 메모</label>
-                          <input
-                            type="text"
-                            value={editHistoryNote}
-                            onChange={(e) => setEditHistoryNote(e.target.value)}
-                            placeholder="메모 내용 입력"
-                            className="w-full p-1.5 bg-white border border-amber-300 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-end space-x-2 pt-1">
-                          <button
-                            type="button"
-                            onClick={() => setEditingHistoryId(null)}
-                            className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-[11px] font-bold rounded-lg transition-all"
-                          >
-                            취소
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleSaveEditHistory(h.id)}
-                            className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold rounded-lg shadow-2xs flex items-center space-x-1 transition-all"
-                          >
-                            <Save className="w-3 h-3" />
-                            <span>수정 완료</span>
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <div key={h.id || idx} className="bg-white p-3 rounded-xl border border-slate-200/80 text-xs shadow-2xs space-y-1.5 group hover:border-slate-300 transition-all">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <div className="flex items-center space-x-2">
-                          <span className="flex items-center space-x-1 font-bold text-blue-900">
-                            <Clock className="w-3 h-3 text-blue-500" />
-                            <span>{h.updated_at}</span>
+                        {h.activity_type && (
+                          <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-bold border border-blue-100">
+                            [{h.activity_type}]
                           </span>
-
-                          {h.activity_type && (
-                            <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-bold border border-blue-100">
-                              [{h.activity_type}]
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex items-center space-x-2">
-                          <span className="bg-slate-100 px-2 py-0.5 rounded-md text-slate-600 font-semibold text-[10px]">
-                            작성자: {h.updated_by_name || '담당자'}
-                          </span>
-
-                          <button
-                            type="button"
-                            onClick={() => handleStartEditHistory(h)}
-                            title="이력 수정"
-                            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-all cursor-pointer"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteHistoryItem(h.id)}
-                            title="이력 삭제"
-                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-all cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                        )}
                       </div>
 
-                      <div className="font-semibold text-slate-800 text-xs">
-                        {h.changes}
-                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span className="bg-slate-100 px-2 py-0.5 rounded-md text-slate-600 font-semibold text-[10px]">
+                          작성자: {h.updated_by_name || '담당자'}
+                        </span>
 
-                      {h.note && (
-                        <div className="text-[11px] text-slate-600 italic bg-slate-50 p-2 rounded-lg border border-slate-100">
-                          {h.note.replace(/^메모:\s*/, '')}
-                        </div>
-                      )}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteHistoryItem(h.id)}
+                          title="이력 삭제"
+                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-all cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
-                  );
-                })}
+
+                    <div className="font-semibold text-slate-800 text-xs">
+                      {h.changes}
+                    </div>
+
+                    {h.note && (
+                      <div className="text-[11px] text-slate-600 italic bg-slate-50 p-2 rounded-lg border border-slate-100">
+                        {h.note.replace(/^메모:\s*/, '')}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           )}
