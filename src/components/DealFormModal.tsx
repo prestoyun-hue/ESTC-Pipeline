@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ConfirmModal } from './ConfirmModal';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
@@ -201,7 +201,7 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
       setStage(dealToEdit.stage || 'lead');
       setCloseReason(dealToEdit.close_reason || '');
 
-      setReceivedDate(todayStr); // 오늘로 자동 등록 및 고정
+      setReceivedDate(dealToEdit.received_date || todayStr);
       setExpectedCloseDate(dealToEdit.expected_close_date || todayStr);
       setNotes(dealToEdit.notes || '');
       setActivityType(dealToEdit.activity_type || ''); // 진행 형태 (선택 안됨 시 빈값)
@@ -249,6 +249,54 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
     setToastMessage(null);
   }, [isOpen, dealToEdit, currentUserId, currentUserName, isSalesRep]);
 
+  // 수정 모드 시 원본 대비 변경 사항 존재 여부 판별
+  const hasChanges = useMemo(() => {
+    if (!isEditMode || !dealToEdit) {
+      return true; // 신규 등록 모드는 항상 저장 가능
+    }
+
+    const cleanCurrentName = (currentUserName || '').replace(/\s*\(.*?\)/g, '').trim();
+    const finalSalesRepName = isSalesRep 
+      ? (cleanCurrentName || '김영업') 
+      : (salesRepName || '영업담당자').replace(/\s*\(.*?\)/g, '').trim();
+    const oldRepClean = (dealToEdit.sales_rep_name || '').replace(/\s*\(.*?\)/g, '').trim();
+
+    // 1. 주요 필드 값 비교
+    if ((dealToEdit.company || '').trim() !== company.trim()) return true;
+    if (oldRepClean !== finalSalesRepName) return true;
+    if (Number(dealToEdit.amount || 0) !== Number(amount || 0)) return true;
+    if ((dealToEdit.stage || 'lead') !== stage) return true;
+    if ((dealToEdit.probability ?? 10) !== Number(probability)) return true;
+    if ((dealToEdit.vendor || 'ESET') !== vendor) return true;
+    if ((dealToEdit.deal_type || '신규') !== dealType) return true;
+    if ((dealToEdit.partner_name || '').trim() !== partnerName.trim()) return true;
+    if ((dealToEdit.product_name || '').trim() !== productName.trim()) return true;
+    if (Number(dealToEdit.pc_count || 0) !== (pcCount !== '' ? Number(pcCount) : 0)) return true;
+    if (Number(dealToEdit.server_count || 0) !== (serverCount !== '' ? Number(serverCount) : 0)) return true;
+    if ((dealToEdit.competitor_product || '').trim() !== competitorProduct.trim()) return true;
+    if ((dealToEdit.lead_source || '파트너 영업') !== leadSource) return true;
+    if ((dealToEdit.expected_close_date || '') !== expectedCloseDate) return true;
+    if ((dealToEdit.received_date || '') !== receivedDate) return true;
+    if ((dealToEdit.close_reason || '').trim() !== closeReason.trim()) return true;
+    if ((dealToEdit.notes || '').trim() !== notes.trim()) return true;
+    if ((dealToEdit.activity_type || '') !== activityType) return true;
+    if ((dealToEdit.title || '').trim() !== title.trim()) return true;
+
+    // 2. 히스토리 이력 변경(삭제 등) 여부 비교
+    const originalHistory = dealToEdit.history || [];
+    if (originalHistory.length !== historyList.length) return true;
+    const originalIds = originalHistory.map(h => h.id).join(',');
+    const currentIds = historyList.map(h => h.id).join(',');
+    if (originalIds !== currentIds) return true;
+
+    return false;
+  }, [
+    isEditMode, dealToEdit, company, salesRepName, isSalesRep, currentUserName,
+    amount, stage, probability, vendor, dealType, partnerName, productName,
+    pcCount, serverCount, competitorProduct, leadSource, expectedCloseDate,
+    receivedDate, closeReason, notes, activityType, title, historyList
+  ]);
+
   // 히스토리 삭제 처리 핸들러
   const handleDeleteHistoryItem = (histId: string) => {
     setHistoryToDelete(histId);
@@ -257,7 +305,7 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
   const confirmDeleteHistory = () => {
     if (historyToDelete) {
       setHistoryList(prev => prev.filter(h => h.id !== historyToDelete));
-      setToastMessage({ type: 'success', text: '히스토리 이력이 삭제되었습니다. (저장 시 적용됨)' });
+      setToastMessage({ type: 'success', text: '히스토리 이력이 삭제되었습니다. (하단 수정 저장을 눌러 반영하세요)' });
       setHistoryToDelete(null);
     }
   };
@@ -319,6 +367,12 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
       return;
     }
 
+    // 수정 모드 시 변경 사항이 없는 경우 중복 저장 방지
+    if (isEditMode && !hasChanges) {
+      setToastMessage({ type: 'error', text: '수정된 내용이 없습니다.' });
+      return;
+    }
+
     setSubmitting(true);
     setToastMessage(null);
 
@@ -360,37 +414,59 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
         };
         changeList.push(`단계: ${stageNames[dealToEdit.stage] || dealToEdit.stage} ➔ ${stageNames[stage] || stage}`);
       }
-      if (Number(dealToEdit.amount) !== Number(amount)) {
-        changeList.push(`금액: ₩${Number(dealToEdit.amount).toLocaleString('ko-KR')} ➔ ₩${Number(amount).toLocaleString('ko-KR')}`);
+      if (Number(dealToEdit.amount || 0) !== Number(amount || 0)) {
+        changeList.push(`금액: ₩${Number(dealToEdit.amount || 0).toLocaleString('ko-KR')} ➔ ₩${Number(amount || 0).toLocaleString('ko-KR')}`);
       }
-      if (dealToEdit.expected_close_date !== expectedCloseDate) {
+      if ((dealToEdit.probability ?? 10) !== Number(probability)) {
+        changeList.push(`진행률: ${dealToEdit.probability ?? 10}% ➔ ${probability}%`);
+      }
+      if ((dealToEdit.expected_close_date || '') !== expectedCloseDate) {
         changeList.push(`예상매출일: ${dealToEdit.expected_close_date || '-'} ➔ ${expectedCloseDate}`);
       }
-      if ((dealToEdit.notes || '') !== (notes.trim() || '')) {
+      if ((dealToEdit.notes || '').trim() !== notes.trim()) {
         changeList.push(`진행내용 업데이트`);
       }
       if ((dealToEdit.activity_type || '') !== activityType) {
         changeList.push(`진행 형태: ${dealToEdit.activity_type || '미지정'} ➔ ${activityType}`);
       }
-      if (dealToEdit.company !== company.trim()) {
+      if ((dealToEdit.company || '').trim() !== company.trim()) {
         changeList.push(`고객사명: ${dealToEdit.company} ➔ ${company.trim()}`);
       }
-      if (dealToEdit.vendor !== vendor) {
+      if ((dealToEdit.vendor || 'ESET') !== vendor) {
         changeList.push(`벤더: ${dealToEdit.vendor || '-'} ➔ ${vendor}`);
       }
+      if ((dealToEdit.deal_type || '신규') !== dealType) {
+        changeList.push(`구분: ${dealToEdit.deal_type || '신규'} ➔ ${dealType}`);
+      }
+      if ((dealToEdit.partner_name || '').trim() !== partnerName.trim()) {
+        changeList.push(`파트너: ${dealToEdit.partner_name || '-'} ➔ ${partnerName.trim() || '-'}`);
+      }
+      if ((dealToEdit.product_name || '').trim() !== productName.trim()) {
+        changeList.push(`제품: ${dealToEdit.product_name || '-'} ➔ ${productName.trim() || '-'}`);
+      }
+      if (Number(dealToEdit.pc_count || 0) !== (pcCount !== '' ? Number(pcCount) : 0) || Number(dealToEdit.server_count || 0) !== (serverCount !== '' ? Number(serverCount) : 0)) {
+        changeList.push(`수량: PC ${pcCount || 0}대, Server ${serverCount || 0}대`);
+      }
+      if ((dealToEdit.close_reason || '').trim() !== closeReason.trim() && closeReason.trim()) {
+        changeList.push(`사유: ${closeReason.trim()}`);
+      }
 
-      const summaryText = changeList.length > 0 ? changeList.join(', ') : `[${activityType}] 정보 업데이트`;
-
-      const historyItem: DealHistoryItem = {
-        id: `hist-${Date.now()}`,
-        updated_at: formattedNow,
-        updated_by_name: updaterDisplayName,
-        changes: summaryText,
-        note: notes.trim() ? notes.trim() : undefined,
-        activity_type: activityType
-      };
-
-      updatedHistory = [historyItem, ...updatedHistory];
+      // [핵심] 실제 필드 변경이 발생한 경우에만 새 히스토리 이력을 1건 추가합니다.
+      // 필드 변경 없이 히스토리만 삭제(정리)된 경우에는 새 히스토리를 생성하지 않고 삭제 반영된 historyList 그대로 저장합니다.
+      if (changeList.length > 0) {
+        const summaryText = changeList.join(', ');
+        const historyItem: DealHistoryItem = {
+          id: `hist-${Date.now()}`,
+          updated_at: formattedNow,
+          updated_by_name: updaterDisplayName,
+          changes: summaryText,
+          note: notes.trim() ? notes.trim() : undefined,
+          activity_type: activityType
+        };
+        updatedHistory = [historyItem, ...historyList];
+      } else {
+        updatedHistory = [...historyList];
+      }
     } else {
       const historyItem: DealHistoryItem = {
         id: `hist-${Date.now()}`,
@@ -1248,8 +1324,13 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={submitting || deleting}
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center space-x-2 cursor-pointer disabled:opacity-50"
+              disabled={submitting || deleting || (isEditMode && !hasChanges)}
+              className={`px-5 py-2 text-xs font-bold rounded-xl shadow-xs transition-all flex items-center space-x-2 ${
+                isEditMode && !hasChanges
+                  ? 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed opacity-60'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
+              }`}
+              title={isEditMode && !hasChanges ? '수정된 내용이 없습니다.' : undefined}
             >
               {submitting ? (
                 <>
