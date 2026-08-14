@@ -591,7 +591,7 @@ export const SalesReportDashboard: React.FC = () => {
 
     filteredDeals.forEach(d => {
       if (d.stage === 'closed_lost') {
-        const reason = d.lost_reason || d.lost_reason_detail || '사유 미기재';
+        const reason = d.close_reason || d.lost_reason || d.lost_reason_detail || '사유 미기재';
         reasonMap.set(reason, (reasonMap.get(reason) || 0) + 1);
       }
     });

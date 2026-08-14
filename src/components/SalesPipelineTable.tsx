@@ -469,7 +469,7 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
   // CSV 단순 Export 기능
   const exportToCSV = () => {
     if (filteredDeals.length === 0) return;
-    const headers = ['Deal-ID', '고객사', '영업건명', '영업담당자', '벤더', '파트너', '제품명', 'PC수량', 'Server수량', '금액(원)', '단계', '접수일', '예상매출일'];
+    const headers = ['Deal-ID', '고객사', '영업건명', '영업담당자', '벤더', '파트너', '제품명', 'PC수량', 'Server수량', '금액(원)', '단계', '수주/실패사유', '접수일', '예상매출일'];
     const rows = filteredDeals.map(d => [
       d.deal_code || d.id,
       `"${d.company}"`,
@@ -482,6 +482,7 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
       d.server_count || 0,
       d.amount,
       d.stage,
+      `"${(d.close_reason || '').replace(/"/g, '""')}"`,
       d.received_date || '',
       d.expected_close_date || ''
     ]);
@@ -842,11 +843,26 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
                         ₩{deal.amount.toLocaleString('ko-KR')}
                       </td>
 
-                      {/* 진행 단계 */}
+                      {/* 진행 단계 & 수주/실패 사유 */}
                       <td className="py-3.5 px-4 text-center">
                         <span className={`inline-block px-2.5 py-1 rounded-lg text-[11px] border ${badge.bg}`}>
                           {badge.label}
                         </span>
+                        {deal.close_reason && (
+                          <div 
+                            className={`mt-1 text-[10px] font-medium px-2 py-0.5 rounded-md border inline-block max-w-[150px] truncate ${
+                              deal.stage === 'closed_lost'
+                                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                : deal.stage === 'closed_won'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-amber-50 text-amber-800 border-amber-200'
+                            }`}
+                            title={`${deal.stage === 'closed_lost' ? '실패 사유' : deal.stage === 'closed_won' ? '수주 사유' : '사유'}: ${deal.close_reason}`}
+                          >
+                            <span className="font-bold mr-0.5">{deal.stage === 'closed_lost' ? '실패:' : deal.stage === 'closed_won' ? '수주:' : '사유:'}</span>
+                            <span>{deal.close_reason}</span>
+                          </div>
+                        )}
                       </td>
 
                       {/* 등록일 */}

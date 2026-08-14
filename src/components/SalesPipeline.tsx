@@ -598,6 +598,29 @@ export const SalesPipeline: React.FC<SalesPipelineProps> = ({ onNavigateToTable 
                             </div>
                           )}
 
+                          {/* 수주 / 실패(Lost) 사유 표시 */}
+                          {deal.close_reason && (
+                            <div className={`p-2 rounded-lg text-[11px] font-medium border flex items-start space-x-1.5 ${
+                              deal.stage === 'closed_lost'
+                                ? 'bg-rose-50/90 border-rose-200 text-rose-800'
+                                : deal.stage === 'closed_won'
+                                ? 'bg-emerald-50/90 border-emerald-200 text-emerald-800'
+                                : 'bg-amber-50/90 border-amber-200 text-amber-800'
+                            }`}>
+                              {deal.stage === 'closed_lost' ? (
+                                <XCircle className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+                              ) : (
+                                <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                              )}
+                              <div className="leading-snug">
+                                <span className="font-bold mr-1">
+                                  {deal.stage === 'closed_lost' ? '실패 사유:' : deal.stage === 'closed_won' ? '수주 사유:' : '사유:'}
+                                </span>
+                                <span className="break-words">{deal.close_reason}</span>
+                              </div>
+                            </div>
+                          )}
+
                           {/* 수주 금액 & 담당자 & 최종 업데이트 날짜 */}
                           <div className="pt-2 border-t border-slate-100 space-y-1.5">
                             <div className="flex items-center justify-between">
