@@ -259,10 +259,10 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
   const [dealToEdit, setDealToEdit] = useState<Deal | null>(null);
 
   // 딜 목록 가져오기 및 실시간 구독
-  const loadDeals = async () => {
+  const loadDeals = async (forceRefresh: boolean = false) => {
     setLoading(true);
     try {
-      const data = await fetchStoredDeals();
+      const data = await fetchStoredDeals(forceRefresh);
       setDeals(deduplicateDeals(data));
     } catch (err) {
       console.warn('테이블 딜 데이터 로드 실패:', err);
@@ -569,7 +569,7 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
           </button>
 
           <button
-            onClick={loadDeals}
+            onClick={() => loadDeals(true)}
             disabled={loading}
             className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
             title="새로고침"

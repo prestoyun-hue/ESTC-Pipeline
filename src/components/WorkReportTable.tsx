@@ -82,9 +82,9 @@ export const WorkReportTable: React.FC = () => {
   const [copied, setCopied] = useState<boolean>(false);
 
   // 데이터 로드 및 실시간 구독
-  const loadDeals = async () => {
+  const loadDeals = async (forceRefresh: boolean = false) => {
     setLoading(true);
-    const data = await fetchStoredDeals();
+    const data = await fetchStoredDeals(forceRefresh);
     setDeals(deduplicateDeals(data));
     setLoading(false);
   };
@@ -383,8 +383,17 @@ export const WorkReportTable: React.FC = () => {
           </p>
         </div>
 
-        {/* 내보내기 & 공유 버튼 */}
+        {/* 내보내기 & 공유 버튼 & 새로고침 */}
         <div className="flex items-center space-x-2">
+          <button
+            onClick={() => loadDeals(true)}
+            disabled={loading}
+            className="p-2.5 bg-white border border-slate-200 hover:border-blue-400 text-slate-700 hover:text-blue-700 rounded-xl text-xs font-bold shadow-2xs transition-all flex items-center cursor-pointer"
+            title="업무보고 데이터 즉시 새로고침 (DB 강제 동기화)"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : 'text-slate-500'}`} />
+          </button>
+
           <button
             onClick={handleCopyReportText}
             className="px-3.5 py-2 bg-white border border-slate-200 hover:border-blue-400 text-slate-700 hover:text-blue-700 rounded-xl text-xs font-bold shadow-2xs transition-all flex items-center space-x-1.5 cursor-pointer"

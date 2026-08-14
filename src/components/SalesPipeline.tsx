@@ -209,10 +209,10 @@ export const SalesPipeline: React.FC<SalesPipelineProps> = ({ onNavigateToTable 
   };
 
   // 딜 데이터 로드 및 실시간 구독
-  const loadDeals = async () => {
+  const loadDeals = async (forceRefresh: boolean = false) => {
     setLoadingDB(true);
     try {
-      const data = await fetchStoredDeals();
+      const data = await fetchStoredDeals(forceRefresh);
       setDeals(deduplicateDeals(data));
     } catch (err) {
       console.warn('딜 조회 실패:', err);
@@ -552,6 +552,17 @@ export const SalesPipeline: React.FC<SalesPipelineProps> = ({ onNavigateToTable 
                 <span className="hidden sm:inline">컴팩트</span>
               </button>
             </div>
+
+            {/* 수동 새로고침 버튼 */}
+            <button
+              type="button"
+              onClick={() => loadDeals(true)}
+              disabled={loadingDB}
+              className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              title="데이터 즉시 새로고침 (DB 강제 동기화)"
+            >
+              <RefreshCw className={`w-4 h-4 ${loadingDB ? 'animate-spin text-blue-600' : ''}`} />
+            </button>
 
             {/* 신규 등록 버튼 */}
             <button

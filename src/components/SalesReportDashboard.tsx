@@ -103,10 +103,10 @@ export const SalesReportDashboard: React.FC = () => {
   const [onlyOverdue, setOnlyOverdue] = useState<boolean>(false);
 
   // 데이터 수집 및 실시간 구독
-  const loadData = async () => {
+  const loadData = async (forceRefresh: boolean = false) => {
     setLoading(true);
     try {
-      const stored = await fetchStoredDeals();
+      const stored = await fetchStoredDeals(forceRefresh);
       setDeals(deduplicateDeals(stored));
     } catch (err) {
       console.error('딜 데이터 조회 실패:', err);
@@ -643,7 +643,7 @@ export const SalesReportDashboard: React.FC = () => {
         </div>
 
         <button
-          onClick={loadData}
+          onClick={() => loadData(true)}
           disabled={loading}
           className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center space-x-2 self-start md:self-auto transition-all cursor-pointer"
         >

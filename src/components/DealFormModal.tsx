@@ -119,12 +119,15 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
   const [historyToDelete, setHistoryToDelete] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // 계정 관리 리스트(profiles) 목록 조회 (로컬 스토리지 및 Supabase DB 연동)
+  // 계정 관리 리스트(profiles) 목록 조회 (메모리 캐시 & 로컬 스토리지 & Supabase DB 연동)
   useEffect(() => {
     async function fetchProfiles() {
+      // 1. 이미 프로필이 로드되어 있다면 재조회 생략 (모달 열 때마다 DB 재조회 방지)
+      if (profiles.length > 0) return;
+
       let loadedProfiles: UserProfile[] = [];
 
-      // 1. 로컬스토리지 계정 관리 리스트에서 1차 로드
+      // 2. 로컬스토리지 계정 관리 리스트에서 1차 로드
       try {
         const savedAdminProfiles = localStorage.getItem('admin_user_profiles');
         const savedPipelineProfiles = localStorage.getItem('sales_pipeline_profiles');
@@ -139,7 +142,7 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
         console.warn('로컬 프로필 로드 중 오류:', e);
       }
 
-      // 2. Supabase DB 구성 시 DB에서 최신 profiles 로드
+      // 3. Supabase DB 구성 시 DB에서 최신 profiles 로드 (최초 1회만)
       if (isSupabaseConfigured && supabase) {
         try {
           setLoadingProfiles(true);
@@ -165,7 +168,7 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
     if (isOpen) {
       fetchProfiles();
     }
-  }, [isOpen]);
+  }, [isOpen, profiles.length]);
 
   // 수정 모드 / 신규 모드 시 폼 초기화
   useEffect(() => {
