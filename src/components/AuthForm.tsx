@@ -81,11 +81,11 @@ export const AuthForm: React.FC = () => {
 
   return (
     <div className="w-full max-w-md mx-auto my-8 px-4">
-      {/* 메인 카드 컨테이너 */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden text-slate-900">
+      {/* 메인 카드 컨테이너 (세련된 음영 및 반투명 테두리) */}
+      <div className="bg-white/95 backdrop-blur-md border border-white/20 shadow-2xl rounded-2xl overflow-hidden text-slate-900 ring-1 ring-black/5">
         
         {/* 카드 헤더 */}
-        <div className="p-8 border-b border-slate-100 text-center relative bg-white">
+        <div className="p-8 border-b border-slate-100 text-center relative bg-gradient-to-b from-slate-50/70 to-white">
           <div className="inline-flex p-3 rounded-xl bg-blue-600 text-white mb-4 shadow-sm">
             <Briefcase className="w-7 h-7" />
           </div>

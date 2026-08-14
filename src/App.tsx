@@ -52,8 +52,35 @@ const MainContent: React.FC = () => {
   // 로그인되어 있지 않은 경우 로그인/회원가입 UI 출력
   if (!profile) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center py-12 px-4">
-        <AuthForm />
+      <div className="relative min-h-screen flex items-center justify-center py-12 px-4 overflow-hidden bg-slate-900">
+        {/* 데이터 비즈니스 배경 이미지 (은은한 투명도 + 오버레이) */}
+        <div 
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-transform duration-1000 scale-105"
+          style={{
+            backgroundImage: `url('https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=2000&q=80')`,
+            opacity: 0.22,
+          }}
+        />
+        
+        {/* 은은한 그라데이션 및 비즈니스 그리드 오버레이 */}
+        <div className="absolute inset-0 bg-gradient-to-tr from-slate-950 via-slate-900/80 to-blue-950/40 backdrop-blur-[2px]" />
+        
+        {/* 미세한 테크 그리드 패턴 */}
+        <div 
+          className="absolute inset-0 opacity-[0.07] pointer-events-none"
+          style={{
+            backgroundImage: `radial-gradient(circle at 1px 1px, rgba(255,255,255,0.4) 1px, transparent 0)`,
+            backgroundSize: '28px 28px'
+          }}
+        />
+
+        {/* 상단/하단 은은한 앰비언트 글로우 */}
+        <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 w-full">
+          <AuthForm />
+        </div>
       </div>
     );
   }
