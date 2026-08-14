@@ -330,13 +330,8 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
     return Array.from(repSet);
   }, [deals, profile?.full_name]);
 
-  // 지연 딜 개수 계산 (예상 매출일 경과 & 미완료)
-  const overdueCount = useMemo(() => {
-    return deals.filter(isOverdueDeal).length;
-  }, [deals]);
-
-  // 검색 및 필터링 적용된 딜 목록
-  const filteredDeals = useMemo(() => {
+  // 검색 및 상세 필터(단계 제외)가 적용된 기본 딜 목록
+  const baseFilteredDeals = useMemo(() => {
     return deals.filter(deal => {
       // 영업 담당 권한인 경우 본인의 딜만 반환
       if (role === 'sales_rep') {
@@ -388,13 +383,6 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
         }
       }
 
-      // 단계 필터 (포캐스트는 0%, 100% 제외, 즉 closed_lost 및 closed_won 제외)
-      if (selectedStage === 'forecast') {
-        if (deal.stage === 'closed_lost' || deal.stage === 'closed_won') return false;
-      } else if (selectedStage !== 'all' && deal.stage !== selectedStage) {
-        return false;
-      }
-
       // 벤더 필터
       if (selectedVendor !== 'all' && deal.vendor !== selectedVendor) {
         return false;
@@ -405,6 +393,37 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
         return false;
       }
 
+      return true;
+    });
+  }, [deals, searchTerm, selectedVendor, selectedType, selectedRepFilter, onlyOverdue, datePreset, dateTargetField, startDate, endDate, role, profile]);
+
+  // 지연 딜 개수 계산 (현재 기본 필터 기준)
+  const overdueCount = useMemo(() => {
+    return baseFilteredDeals.filter(isOverdueDeal).length;
+  }, [baseFilteredDeals]);
+
+  // 상단 빠른 단계(Stage) 탭용 건수 집계 (현재 검색 및 조건 필터와 실시간 연동)
+  const stageTabCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      all: baseFilteredDeals.length,
+      active: baseFilteredDeals.filter(d => d.stage !== 'closed_won' && d.stage !== 'closed_lost').length,
+      negotiation: baseFilteredDeals.filter(d => d.stage === 'negotiation').length,
+      order: baseFilteredDeals.filter(d => d.stage === 'order').length,
+      closed_won: baseFilteredDeals.filter(d => d.stage === 'closed_won').length,
+      closed_lost: baseFilteredDeals.filter(d => d.stage === 'closed_lost').length,
+    };
+    return counts;
+  }, [baseFilteredDeals]);
+
+  // 단계 필터 및 정렬까지 적용된 최종 표시 딜 목록
+  const filteredDeals = useMemo(() => {
+    return baseFilteredDeals.filter(deal => {
+      // 단계 필터 (포캐스트는 0%, 100% 제외, 즉 closed_lost 및 closed_won 제외)
+      if (selectedStage === 'forecast') {
+        if (deal.stage === 'closed_lost' || deal.stage === 'closed_won') return false;
+      } else if (selectedStage !== 'all' && deal.stage !== selectedStage) {
+        return false;
+      }
       return true;
     }).sort((a, b) => {
       let valA: any;
@@ -424,7 +443,7 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
       if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [deals, searchTerm, selectedStage, selectedVendor, selectedType, selectedRepFilter, onlyOverdue, datePreset, dateTargetField, startDate, endDate, role, profile, sortField, sortDirection]);
+  }, [baseFilteredDeals, selectedStage, sortField, sortDirection]);
 
   // 하단 합계 통계 계산
   const totals = useMemo(() => {
@@ -442,18 +461,6 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
       winRate
     };
   }, [filteredDeals]);
-
-  // 상단 빠른 단계(Stage) 탭용 건수 집계 (전체 딜 기준)
-  const stageTabCounts = useMemo(() => {
-    const counts: Record<string, number> = {
-      all: deals.length,
-      active: deals.filter(d => d.stage !== 'closed_won' && d.stage !== 'closed_lost').length,
-      proposal_poc: deals.filter(d => d.stage === 'proposal' || d.stage === 'poc' || d.stage === 'negotiation').length,
-      closed_won: deals.filter(d => d.stage === 'closed_won').length,
-      closed_lost: deals.filter(d => d.stage === 'closed_lost').length,
-    };
-    return counts;
-  }, [deals]);
 
   // 필터/검색 변경 시 페이지를 1페이지로 리셋
   useEffect(() => {
@@ -632,6 +639,11 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
             }`}
           >
             <span>견적/협상 (70%)</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+              selectedStage === 'negotiation' ? 'bg-amber-800 text-white' : 'bg-amber-50 text-amber-800'
+            }`}>
+              {stageTabCounts.negotiation}
+            </span>
           </button>
 
           <button
@@ -644,6 +656,11 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
             }`}
           >
             <span>주문대기 (90%)</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+              selectedStage === 'order' ? 'bg-purple-800 text-white' : 'bg-purple-50 text-purple-800'
+            }`}>
+              {stageTabCounts.order}
+            </span>
           </button>
 
           <button
