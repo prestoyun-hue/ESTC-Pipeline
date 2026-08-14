@@ -36,7 +36,12 @@ import {
   RefreshCw,
   Tag,
   ChevronRight,
-  Layers
+  ChevronLeft,
+  ChevronDown,
+  ChevronsLeftRight,
+  Layers,
+  LayoutGrid,
+  List
 } from 'lucide-react';
 
 // 확장된 파이프라인 단계 메타데이터
@@ -171,6 +176,37 @@ export const SalesPipeline: React.FC<SalesPipelineProps> = ({ onNavigateToTable 
   // 모달 제어 상태 (등록 및 수정)
   const [isFormModalOpen, setIsFormModalOpen] = useState<boolean>(false);
   const [dealToEdit, setDealToEdit] = useState<Deal | null>(null);
+
+  // 칸반 보드 UX 설정: 카드 뷰 모드 (상세 vs 컴팩트) 및 컬럼 접기(Collapse) 상태
+  const [cardViewMode, setCardViewMode] = useState<'detailed' | 'compact'>('detailed');
+  const [collapsedStages, setCollapsedStages] = useState<Record<PipelineStage, boolean>>({
+    lead: false,
+    contacted: false,
+    proposal: false,
+    poc: false,
+    negotiation: false,
+    order: false,
+    closed_won: false,
+    closed_lost: false,
+  });
+
+  // 특정 컬럼 접기/펼치기 토글 핸들러
+  const toggleStageCollapse = (stageId: PipelineStage) => {
+    setCollapsedStages(prev => ({
+      ...prev,
+      [stageId]: !prev[stageId]
+    }));
+  };
+
+  // 완료된 컬럼(수주/실패) 일괄 접기/펼치기
+  const toggleAllClosedStages = () => {
+    const isBothCollapsed = collapsedStages.closed_won && collapsedStages.closed_lost;
+    setCollapsedStages(prev => ({
+      ...prev,
+      closed_won: !isBothCollapsed,
+      closed_lost: !isBothCollapsed
+    }));
+  };
 
   // 딜 데이터 로드 및 실시간 구독
   const loadDeals = async () => {
@@ -438,8 +474,8 @@ export const SalesPipeline: React.FC<SalesPipelineProps> = ({ onNavigateToTable 
           }}
         />
 
-        {/* 하단: 키워드 검색, 영업담당자 필터, 신규 딜 등록 버튼 */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-1">
+        {/* 하단: 키워드 검색, 영업담당자 필터, 보드 뷰 옵션, 신규 딜 등록 버튼 */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-1">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-2 sm:space-y-0 sm:space-x-3 flex-1 max-w-2xl">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
@@ -470,56 +506,200 @@ export const SalesPipeline: React.FC<SalesPipelineProps> = ({ onNavigateToTable 
             )}
           </div>
 
-          {/* 신규 등록 버튼 */}
-          <button
-            onClick={handleOpenCreateModal}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center justify-center space-x-2 cursor-pointer shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>딜 등록</span>
-          </button>
+          {/* 우측 도구 모음: 뷰 모드 토글 + 완료 컬럼 일괄 접기 + 신규 등록 */}
+          <div className="flex items-center space-x-2 shrink-0 self-end lg:self-auto">
+            {/* 완료 단계(수주/실패) 빠른 접기/펼치기 토글 */}
+            <button
+              type="button"
+              onClick={toggleAllClosedStages}
+              className={`px-3 py-2 text-xs font-semibold rounded-xl border transition-all flex items-center space-x-1.5 cursor-pointer ${
+                collapsedStages.closed_won && collapsedStages.closed_lost
+                  ? 'bg-slate-800 text-white border-slate-800 shadow-xs'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+              }`}
+              title="수주(100%) 및 실패(0%) 컬럼을 접거나 펼쳐서 진행 중인 활성 파이프라인에 집중합니다"
+            >
+              <ChevronsLeftRight className="w-3.5 h-3.5" />
+              <span>{collapsedStages.closed_won && collapsedStages.closed_lost ? '완료 단계 펼치기' : '완료 단계 접기'}</span>
+            </button>
+
+            {/* 카드 뷰 모드 전환 (기본 vs 컴팩트) */}
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setCardViewMode('detailed')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1 cursor-pointer ${
+                  cardViewMode === 'detailed'
+                    ? 'bg-white text-blue-600 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="상세 카드 뷰 (모든 정보 표시)"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">상세</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCardViewMode('compact')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1 cursor-pointer ${
+                  cardViewMode === 'compact'
+                    ? 'bg-white text-blue-600 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="컴팩트 뷰 (한눈에 많은 딜 보기)"
+              >
+                <List className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">컴팩트</span>
+              </button>
+            </div>
+
+            {/* 신규 등록 버튼 */}
+            <button
+              onClick={handleOpenCreateModal}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center justify-center space-x-2 cursor-pointer shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              <span>딜 등록</span>
+            </button>
+          </div>
         </div>
 
       </div>
 
-      {/* 파이프라인 칸반 보드 (수평 스크롤 지원) */}
+      {/* 파이프라인 칸반 보드 (수평 스크롤 + 컬럼별 독립 세로 스크롤 & 헤더 고정) */}
       <div className="overflow-x-auto pb-4">
-        <div className="flex space-x-4 min-w-[1400px]">
+        <div className="flex space-x-3.5 min-w-[1400px] items-start">
           {STAGES.map((stageMeta) => {
             const stageDeals = filteredDeals.filter(d => d.stage === stageMeta.id);
             const stageSum = stageDeals.reduce((sum, d) => sum + d.amount, 0);
+            const isCollapsed = collapsedStages[stageMeta.id];
 
-            return (
-              <div 
-                key={stageMeta.id} 
-                className={`w-80 shrink-0 rounded-2xl border p-3 flex flex-col ${stageMeta.color}`}
-              >
-                {/* Stage 컬럼 헤더 */}
-                <div className="flex items-center justify-between pb-3 border-b border-slate-200/80 mb-3">
-                  <div>
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${stageMeta.badge}`}>
-                      {stageMeta.title}
+            // 1) 컬럼이 접힌(Collapsed) 상태
+            if (isCollapsed) {
+              return (
+                <div
+                  key={stageMeta.id}
+                  onClick={() => toggleStageCollapse(stageMeta.id)}
+                  className={`w-14 shrink-0 rounded-2xl border transition-all cursor-pointer hover:border-blue-400 group py-4 px-2 flex flex-col items-center justify-between select-none ${stageMeta.color} h-[680px] shadow-2xs hover:shadow-sm`}
+                  title={`[${stageMeta.title}] 클릭하여 펼치기 (총 ${stageDeals.length}건 / ₩${stageSum.toLocaleString('ko-KR')})`}
+                >
+                  <div className="flex flex-col items-center space-y-3">
+                    <button
+                      type="button"
+                      className="p-1 rounded-lg bg-white/80 border border-slate-200 text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                    <span className="text-[10px] font-extrabold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-full font-mono">
+                      {stageDeals.length}
                     </span>
                   </div>
-                  <div className="text-right">
-                    <span className="text-xs font-extrabold text-slate-800 font-mono block">
-                      ₩{stageSum.toLocaleString('ko-KR')}
-                    </span>
-                    <span className="text-[10px] text-slate-500 font-medium">
-                      총 {stageDeals.length}건
+
+                  {/* 세로 텍스트 단계명 */}
+                  <div 
+                    className="text-xs font-bold text-slate-700 tracking-wider whitespace-nowrap"
+                    style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+                  >
+                    {stageMeta.title.replace(/\(.*?\)/g, '').trim()}
+                  </div>
+
+                  <div className="text-center">
+                    <span className="text-[10px] font-bold text-slate-500 font-mono block">
+                      ₩{(stageSum / 100000000).toFixed(1)}억
                     </span>
                   </div>
                 </div>
+              );
+            }
 
-                {/* Deal Cards List */}
-                <div className="space-y-3 flex-1 overflow-y-auto max-h-[620px] pr-0.5">
+            // 2) 컬럼이 펼쳐진 일반 상태
+            return (
+              <div 
+                key={stageMeta.id} 
+                className={`w-80 shrink-0 rounded-2xl border flex flex-col ${stageMeta.color} max-h-[720px] shadow-2xs`}
+              >
+                {/* Stage 컬럼 헤더 (상단 고정 Sticky) */}
+                <div className="p-3 border-b border-slate-200/80 bg-white/40 backdrop-blur-xs rounded-t-2xl flex items-center justify-between sticky top-0 z-10">
+                  <div className="flex items-center space-x-1.5 min-w-0 pr-1">
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full truncate ${stageMeta.badge}`}>
+                      {stageMeta.title}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2 shrink-0">
+                    <div className="text-right">
+                      <span className="text-xs font-extrabold text-slate-800 font-mono block leading-tight">
+                        ₩{stageSum.toLocaleString('ko-KR')}
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-medium leading-none">
+                        총 {stageDeals.length}건
+                      </span>
+                    </div>
+                    {/* 컬럼 접기 버튼 */}
+                    <button
+                      type="button"
+                      onClick={() => toggleStageCollapse(stageMeta.id)}
+                      className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer"
+                      title={`${stageMeta.title} 컬럼 접기`}
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Deal Cards List (내부 스크롤 구역) */}
+                <div className="p-3 space-y-2.5 flex-1 overflow-y-auto max-h-[640px] pr-2 custom-scrollbar">
                   {stageDeals.length === 0 ? (
-                    <div className="py-8 text-center border-2 border-dashed border-slate-200 rounded-xl text-slate-400 text-xs">
+                    <div className="py-12 text-center border-2 border-dashed border-slate-200/80 rounded-xl text-slate-400 text-xs">
                       등록된 딜이 없습니다
                     </div>
                   ) : (
                     stageDeals.map((deal) => {
                       const isOverdue = isOverdueDeal(deal);
+
+                      // [컴팩트 뷰 모드 카드]
+                      if (cardViewMode === 'compact') {
+                        return (
+                          <div
+                            key={deal.id}
+                            onClick={() => handleOpenEditModal(deal)}
+                            className={`p-2.5 border rounded-xl shadow-2xs hover:shadow-md transition-all cursor-pointer group space-y-1.5 ${
+                              isOverdue
+                                ? 'bg-rose-50/80 border-rose-300 ring-1 ring-rose-200 hover:border-rose-500'
+                                : 'bg-white border-slate-200 hover:border-blue-400'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] font-bold font-mono text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-100 truncate max-w-[120px]">
+                                {deal.deal_code || deal.id}
+                              </span>
+                              <div className="flex items-center space-x-1">
+                                {isOverdue && (
+                                  <AlertTriangle className="w-3 h-3 text-rose-600 animate-pulse shrink-0" />
+                                )}
+                                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded">
+                                  {deal.probability}%
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition-colors truncate max-w-[170px]" title={deal.company}>
+                                {deal.company}
+                              </h4>
+                              <span className="text-xs font-extrabold text-slate-900 font-mono">
+                                ₩{deal.amount.toLocaleString('ko-KR')}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-100">
+                              <span className="truncate max-w-[140px]">{deal.product_name || deal.title}</span>
+                              <span className="text-slate-600 font-medium shrink-0">{deal.sales_rep_name}</span>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // [기본 상세 뷰 모드 카드]
                       return (
                         <div
                           key={deal.id}

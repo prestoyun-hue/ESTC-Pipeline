@@ -40,13 +40,21 @@ import {
   Edit2,
   FileSpreadsheet,
   ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   CheckCircle2,
   XCircle,
   AlertTriangle,
   HelpCircle,
   ChevronRight,
+  ChevronLeft,
+  ChevronsLeft,
+  ChevronsRight,
   Server,
-  Monitor
+  Monitor,
+  LayoutGrid,
+  List,
+  Sparkles
 } from 'lucide-react';
 
 // 폴백/데모 데이터
@@ -241,6 +249,11 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
   const [sortField, setSortField] = useState<'amount' | 'expected_close_date' | 'received_date' | 'company' | 'created_at' | 'updated_at'>('updated_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
+  // 페이지네이션 및 표 UI 설정 상태
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(20);
+  const [tableDensity, setTableDensity] = useState<'normal' | 'compact'>('normal');
+
   // 모달 상태 (신규 등록 / 수정)
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [dealToEdit, setDealToEdit] = useState<Deal | null>(null);
@@ -430,6 +443,30 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
     };
   }, [filteredDeals]);
 
+  // 상단 빠른 단계(Stage) 탭용 건수 집계 (전체 딜 기준)
+  const stageTabCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      all: deals.length,
+      active: deals.filter(d => d.stage !== 'closed_won' && d.stage !== 'closed_lost').length,
+      proposal_poc: deals.filter(d => d.stage === 'proposal' || d.stage === 'poc' || d.stage === 'negotiation').length,
+      closed_won: deals.filter(d => d.stage === 'closed_won').length,
+      closed_lost: deals.filter(d => d.stage === 'closed_lost').length,
+    };
+    return counts;
+  }, [deals]);
+
+  // 필터/검색 변경 시 페이지를 1페이지로 리셋
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedStage, selectedVendor, selectedType, selectedRepFilter, onlyOverdue, datePreset, dateTargetField, startDate, endDate, pageSize]);
+
+  // 페이지네이션 계산
+  const totalPages = Math.max(1, Math.ceil(filteredDeals.length / pageSize));
+  const paginatedDeals = useMemo(() => {
+    const startIdx = (currentPage - 1) * pageSize;
+    return filteredDeals.slice(startIdx, startIdx + pageSize);
+  }, [filteredDeals, currentPage, pageSize]);
+
   // 정렬 변경 토글
   const handleSort = (field: 'amount' | 'expected_close_date' | 'received_date' | 'company' | 'created_at' | 'updated_at') => {
     if (sortField === field) {
@@ -546,7 +583,156 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
         </div>
       </div>
 
-      {/* 2. 검색 및 상세 조건 필터 바 */}
+      {/* 2. 빠른 단계 필터 탭 (Quick Stage Filter Tabs) & 뷰 옵션 */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        {/* 단계별 퀵 탭 */}
+        <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 max-w-full text-xs font-bold scrollbar-none">
+          <button
+            type="button"
+            onClick={() => handleStageChange('all')}
+            className={`px-3 py-2 rounded-xl transition-all flex items-center space-x-1.5 shrink-0 cursor-pointer border ${
+              selectedStage === 'all'
+                ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            <span>전체</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+              selectedStage === 'all' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'
+            }`}>
+              {stageTabCounts.all}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleStageChange('forecast')}
+            className={`px-3 py-2 rounded-xl transition-all flex items-center space-x-1.5 shrink-0 cursor-pointer border ${
+              selectedStage === 'forecast'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>진행 중 딜</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+              selectedStage === 'forecast' ? 'bg-blue-800 text-white' : 'bg-blue-50 text-blue-800'
+            }`}>
+              {stageTabCounts.active}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleStageChange('negotiation')}
+            className={`px-3 py-2 rounded-xl transition-all flex items-center space-x-1.5 shrink-0 cursor-pointer border ${
+              selectedStage === 'negotiation'
+                ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                : 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50'
+            }`}
+          >
+            <span>견적/협상 (70%)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleStageChange('order')}
+            className={`px-3 py-2 rounded-xl transition-all flex items-center space-x-1.5 shrink-0 cursor-pointer border ${
+              selectedStage === 'order'
+                ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-50'
+            }`}
+          >
+            <span>주문대기 (90%)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleStageChange('closed_won')}
+            className={`px-3 py-2 rounded-xl transition-all flex items-center space-x-1.5 shrink-0 cursor-pointer border ${
+              selectedStage === 'closed_won'
+                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                : 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50'
+            }`}
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            <span>수주 완료</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+              selectedStage === 'closed_won' ? 'bg-emerald-800 text-white' : 'bg-emerald-50 text-emerald-800'
+            }`}>
+              {stageTabCounts.closed_won}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleStageChange('closed_lost')}
+            className={`px-3 py-2 rounded-xl transition-all flex items-center space-x-1.5 shrink-0 cursor-pointer border ${
+              selectedStage === 'closed_lost'
+                ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                : 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50'
+            }`}
+          >
+            <XCircle className="w-3.5 h-3.5" />
+            <span>실패/드랍</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+              selectedStage === 'closed_lost' ? 'bg-rose-800 text-white' : 'bg-rose-50 text-rose-800'
+            }`}>
+              {stageTabCounts.closed_lost}
+            </span>
+          </button>
+        </div>
+
+        {/* 행 밀도 (Dense/Normal) 및 페이지당 보기 개수 */}
+        <div className="flex items-center space-x-2 shrink-0 self-end lg:self-auto">
+          {/* 행 간격 조절 스위처 */}
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => setTableDensity('normal')}
+              className={`px-2.5 py-1.5 rounded-lg transition-all flex items-center space-x-1 cursor-pointer ${
+                tableDensity === 'normal'
+                  ? 'bg-white text-blue-600 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="기본 행 간격"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>보통</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setTableDensity('compact')}
+              className={`px-2.5 py-1.5 rounded-lg transition-all flex items-center space-x-1 cursor-pointer ${
+                tableDensity === 'compact'
+                  ? 'bg-white text-blue-600 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="좁은 행 간격 (한 화면에 더 많은 데이터 표시)"
+            >
+              <List className="w-3.5 h-3.5" />
+              <span>컴팩트</span>
+            </button>
+          </div>
+
+          {/* 페이지당 표시 개수 */}
+          <div className="flex items-center space-x-1 bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-medium">
+            <span className="text-slate-500 text-[11px]">보기:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              className="bg-transparent text-slate-800 font-bold focus:outline-none cursor-pointer text-xs"
+            >
+              <option value={10}>10개씩</option>
+              <option value={20}>20개씩</option>
+              <option value={50}>50개씩</option>
+              <option value={100}>100개씩</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. 검색 및 상세 조건 필터 바 */}
       <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-2xs space-y-3">
         
         {/* 상단: 기간 선택 필터 바 */}
@@ -607,16 +793,16 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
               </div>
             )}
 
-            {/* 단계 필터 */}
+            {/* 단계 필터 드롭다운 */}
             <div className="flex items-center space-x-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
-              <span className="text-slate-500 text-[11px] font-semibold">단계:</span>
+              <span className="text-slate-500 text-[11px] font-semibold">세부단계:</span>
               <select
                 value={selectedStage}
                 onChange={(e) => handleStageChange(e.target.value)}
                 className="bg-transparent text-slate-800 font-bold focus:outline-none cursor-pointer"
               >
                 <option value="all">전체 단계</option>
-                <option value="forecast">포캐스트 (0%, 100% 제외)</option>
+                <option value="forecast">포캐스트 (진행중 딜)</option>
                 {PIPELINE_STAGES.map(s => (
                   <option key={s.id} value={s.id}>{s.label}</option>
                 ))}
@@ -694,67 +880,86 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
         </div>
       </div>
 
-      {/* 3. 테이블 데이터 영역 */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden">
-        <div className="overflow-x-auto">
+      {/* 4. 테이블 데이터 영역 (Sticky Header & 높이 지정 컨테이너) */}
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden flex flex-col">
+        <div className="overflow-x-auto max-h-[700px] overflow-y-auto custom-scrollbar">
           <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                <th className="py-3 px-4">Deal-ID</th>
-                <th className="py-3 px-4">
+            <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-xs shadow-2xs border-b border-slate-200">
+              <tr className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                <th className={`${tableDensity === 'compact' ? 'py-2 px-3' : 'py-3.5 px-4'}`}>Deal-ID</th>
+                <th className={`${tableDensity === 'compact' ? 'py-2 px-3' : 'py-3.5 px-4'}`}>
                   <button onClick={() => handleSort('company')} className="flex items-center space-x-1 hover:text-blue-600 cursor-pointer">
                     <span>고객사 / 영업건명</span>
-                    <ArrowUpDown className="w-3 h-3" />
+                    {sortField === 'company' ? (
+                      sortDirection === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-600" /> : <ArrowDown className="w-3 h-3 text-blue-600" />
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                    )}
                   </button>
                 </th>
-                <th className="py-3 px-4">담당자</th>
-                <th className="py-3 px-4">벤더 / 파트너 / 제품</th>
-                <th className="py-3 px-4 text-center">수량(PC/SVR)</th>
-                <th className="py-3 px-4 text-right">
+                <th className={`${tableDensity === 'compact' ? 'py-2 px-3' : 'py-3.5 px-4'}`}>담당자</th>
+                <th className={`${tableDensity === 'compact' ? 'py-2 px-3' : 'py-3.5 px-4'}`}>벤더 / 파트너 / 제품</th>
+                <th className={`${tableDensity === 'compact' ? 'py-2 px-3' : 'py-3.5 px-4'} text-center`}>수량(PC/SVR)</th>
+                <th className={`${tableDensity === 'compact' ? 'py-2 px-3' : 'py-3.5 px-4'} text-right`}>
                   <button onClick={() => handleSort('amount')} className="flex items-center space-x-1 hover:text-blue-600 ml-auto cursor-pointer">
                     <span>예상 금액</span>
-                    <ArrowUpDown className="w-3 h-3" />
+                    {sortField === 'amount' ? (
+                      sortDirection === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-600" /> : <ArrowDown className="w-3 h-3 text-blue-600" />
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                    )}
                   </button>
                 </th>
-                <th className="py-3 px-4 text-center">진행 단계</th>
-                <th className="py-3 px-4 text-center">
+                <th className={`${tableDensity === 'compact' ? 'py-2 px-3' : 'py-3.5 px-4'} text-center`}>진행 단계</th>
+                <th className={`${tableDensity === 'compact' ? 'py-2 px-3' : 'py-3.5 px-4'} text-center`}>
                   <button onClick={() => handleSort('received_date')} className="flex items-center space-x-1 hover:text-blue-600 mx-auto cursor-pointer">
                     <span>등록일</span>
-                    <ArrowUpDown className="w-3 h-3" />
+                    {sortField === 'received_date' ? (
+                      sortDirection === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-600" /> : <ArrowDown className="w-3 h-3 text-blue-600" />
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                    )}
                   </button>
                 </th>
-                <th className="py-3 px-4 text-center">
+                <th className={`${tableDensity === 'compact' ? 'py-2 px-3' : 'py-3.5 px-4'} text-center`}>
                   <button onClick={() => handleSort('expected_close_date')} className="flex items-center space-x-1 hover:text-blue-600 mx-auto cursor-pointer">
                     <span>예상 매출일</span>
-                    <ArrowUpDown className="w-3 h-3" />
+                    {sortField === 'expected_close_date' ? (
+                      sortDirection === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-600" /> : <ArrowDown className="w-3 h-3 text-blue-600" />
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                    )}
                   </button>
                 </th>
-                <th className="py-3 px-4 text-center">
+                <th className={`${tableDensity === 'compact' ? 'py-2 px-3' : 'py-3.5 px-4'} text-center`}>
                   <button onClick={() => handleSort('updated_at')} className="flex items-center space-x-1 hover:text-blue-600 mx-auto cursor-pointer">
                     <span>업데이트 일시</span>
-                    <ArrowUpDown className="w-3 h-3" />
+                    {sortField === 'updated_at' ? (
+                      sortDirection === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-600" /> : <ArrowDown className="w-3 h-3 text-blue-600" />
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                    )}
                   </button>
                 </th>
-                <th className="py-3 px-4 text-center">관리</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs text-slate-800">
               {loading ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-400">
+                  <td colSpan={10} className="py-12 text-center text-slate-400">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-600" />
                     <span>영업 파이프라인 데이터를 불러오는 중입니다...</span>
                   </td>
                 </tr>
               ) : filteredDeals.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-400">
+                  <td colSpan={10} className="py-12 text-center text-slate-400">
                     <p className="font-bold text-slate-600">조회된 영업 딜 데이터가 없습니다.</p>
                     <p className="text-[11px] mt-1">검색 조건이나 필터를 변경해 보세요.</p>
                   </td>
                 </tr>
               ) : (
-                filteredDeals.map((deal) => {
+                paginatedDeals.map((deal) => {
                   const badge = getStageBadge(deal.stage);
                   const isOverdue = isOverdueDeal(deal);
                   const displayUpdatedAt = deal.updated_at 
@@ -763,6 +968,7 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
                   const displayCreatedDate = deal.created_at 
                     ? (deal.created_at.includes('T') ? deal.created_at.split('T')[0] : deal.created_at)
                     : (deal.received_date || '-');
+                  const cellPadding = tableDensity === 'compact' ? 'py-2 px-3' : 'py-3.5 px-4';
 
                   return (
                     <tr
@@ -778,12 +984,12 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
                       }`}
                     >
                       {/* Deal-ID */}
-                      <td className="py-3.5 px-4 font-mono font-bold text-slate-600 text-[11px]">
+                      <td className={`${cellPadding} font-mono font-bold text-slate-600 text-[11px]`}>
                         {deal.deal_code || deal.id.slice(0, 10)}
                       </td>
 
                       {/* 고객사 / 영업건명 */}
-                      <td className="py-3.5 px-4 max-w-xs">
+                      <td className={`${cellPadding} max-w-xs`}>
                         <div className="font-bold text-slate-900 group-hover:text-blue-700 transition-colors flex items-center space-x-1.5 flex-wrap gap-y-1">
                           <span>{deal.company}</span>
                           {isOverdue && (
@@ -804,12 +1010,12 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
                       </td>
 
                       {/* 영업담당자 */}
-                      <td className="py-3.5 px-4 font-semibold text-slate-700">
+                      <td className={`${cellPadding} font-semibold text-slate-700`}>
                         {deal.sales_rep_name || '미지정'}
                       </td>
 
                       {/* 벤더 / 파트너 / 제품 */}
-                      <td className="py-3.5 px-4">
+                      <td className={`${cellPadding}`}>
                         <div className="flex items-center space-x-1">
                           <span className="font-bold text-slate-800">{deal.vendor || '-'}</span>
                           {deal.partner_name && (
@@ -824,8 +1030,8 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
                       </td>
 
                       {/* 수량 (PC / Server) */}
-                      <td className="py-3.5 px-4 text-center font-mono">
-                        <div className="inline-flex items-center space-x-2 text-[11px] text-slate-600 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200/60">
+                      <td className={`${cellPadding} text-center font-mono`}>
+                        <div className="inline-flex items-center space-x-2 text-[11px] text-slate-600 bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200/60">
                           <span className="flex items-center space-x-0.5" title="PC 수량">
                             <Monitor className="w-3 h-3 text-slate-400" />
                             <span>{deal.pc_count || 0}</span>
@@ -839,13 +1045,13 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
                       </td>
 
                       {/* 예상 금액 */}
-                      <td className="py-3.5 px-4 text-right font-bold text-slate-900 font-mono text-sm">
+                      <td className={`${cellPadding} text-right font-bold text-slate-900 font-mono text-sm`}>
                         ₩{deal.amount.toLocaleString('ko-KR')}
                       </td>
 
                       {/* 진행 단계 & 수주/실패 사유 */}
-                      <td className="py-3.5 px-4 text-center">
-                        <span className={`inline-block px-2.5 py-1 rounded-lg text-[11px] border ${badge.bg}`}>
+                      <td className={`${cellPadding} text-center`}>
+                        <span className={`inline-block px-2 py-0.5 rounded-lg text-[11px] border ${badge.bg}`}>
                           {badge.label}
                         </span>
                         {deal.close_reason && (
@@ -866,14 +1072,14 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
                       </td>
 
                       {/* 등록일 */}
-                      <td className="py-3.5 px-4 text-center font-mono text-[11px] text-slate-700 font-medium">
+                      <td className={`${cellPadding} text-center font-mono text-[11px] text-slate-700 font-medium`}>
                         {displayCreatedDate}
                       </td>
 
                       {/* 예상 매출일 */}
-                      <td className="py-3.5 px-4 text-center font-mono text-[11px]">
+                      <td className={`${cellPadding} text-center font-mono text-[11px]`}>
                         {isOverdue ? (
-                          <div className="inline-flex items-center space-x-1 px-2.5 py-1 bg-rose-100 text-rose-800 font-extrabold rounded-lg border border-rose-300 shadow-2xs" title="예상 매출일이 경과되었으나 미완료 상태입니다.">
+                          <div className="inline-flex items-center space-x-1 px-2.5 py-0.5 bg-rose-100 text-rose-800 font-extrabold rounded-lg border border-rose-300 shadow-2xs" title="예상 매출일이 경과되었으나 미완료 상태입니다.">
                             <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0 animate-pulse" />
                             <span>{deal.expected_close_date}</span>
                           </div>
@@ -883,7 +1089,7 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
                       </td>
 
                       {/* 업데이트 일시 및 히스토리 건수 */}
-                      <td className="py-3.5 px-4 text-center">
+                      <td className={`${cellPadding} text-center`}>
                         <div className="font-mono text-[11px] text-slate-700 font-medium">
                           {displayUpdatedAt}
                         </div>
@@ -893,23 +1099,6 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
                           </div>
                         )}
                       </td>
-
-                      {/* 관리 버튼 */}
-                      <td className="py-3.5 px-4 text-center">
-                        <div className="flex items-center justify-center space-x-1">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDealToEdit(deal);
-                              setIsModalOpen(true);
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer"
-                            title="편집"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
                     </tr>
                   );
                 })
@@ -918,10 +1107,90 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
           </table>
         </div>
 
+        {/* 페이지네이션 바 */}
+        {filteredDeals.length > 0 && (
+          <div className="p-3 bg-white border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <div className="text-slate-500 text-[11px] font-medium">
+              전체 <span className="font-bold text-slate-800 font-mono">{filteredDeals.length}</span>건 중{' '}
+              <span className="font-bold text-slate-800 font-mono">{(currentPage - 1) * pageSize + 1}</span> -{' '}
+              <span className="font-bold text-slate-800 font-mono">{Math.min(currentPage * pageSize, filteredDeals.length)}</span>건 표시
+            </div>
+
+            {/* 페이지 번호 버튼 그룹 */}
+            <div className="flex items-center space-x-1">
+              <button
+                type="button"
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed"
+                title="첫 페이지"
+              >
+                <ChevronsLeft className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed"
+                title="이전 페이지"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+
+              {/* 페이지 번호 목록 */}
+              {Array.from({ length: totalPages }, (_, idx) => idx + 1)
+                .filter(page => {
+                  // 현재 페이지 기준 앞뒤 2개씩 노출
+                  return page === 1 || page === totalPages || Math.abs(page - currentPage) <= 2;
+                })
+                .map((page, idx, arr) => {
+                  const prev = arr[idx - 1];
+                  const showEllipsis = prev && page - prev > 1;
+
+                  return (
+                    <React.Fragment key={page}>
+                      {showEllipsis && <span className="px-1 text-slate-400">...</span>}
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage(page)}
+                        className={`min-w-7 h-7 px-2 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer ${
+                          currentPage === page
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    </React.Fragment>
+                  );
+                })}
+
+              <button
+                type="button"
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed"
+                title="다음 페이지"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed"
+                title="마지막 페이지"
+              >
+                <ChevronsRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 하단 요약 통계 푸터 */}
         <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-4 text-xs font-bold text-slate-700">
           <div className="flex items-center space-x-4">
-            <span>총 선택 딜: <span className="text-blue-600 font-mono text-sm">{totals.count}</span>건</span>
+            <span>필터링된 딜: <span className="text-blue-600 font-mono text-sm">{totals.count}</span>건</span>
             <span className="text-slate-300">|</span>
             <span>합계 금액: <span className="text-emerald-700 font-mono text-sm">₩{totals.amount.toLocaleString('ko-KR')}</span></span>
           </div>
