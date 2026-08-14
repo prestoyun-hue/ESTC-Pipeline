@@ -1344,7 +1344,7 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
               취소
             </button>
 
-            {isEditMode && (
+            {isEditMode && !isSalesRep && (
               <button
                 type="button"
                 onClick={handleSaveAsNew}
