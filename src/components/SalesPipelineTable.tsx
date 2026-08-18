@@ -10,8 +10,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Deal, PipelineStage, UserRole, PipelineFilterOptions } from '../types';
-import { fetchStoredDeals, subscribeToDealChanges, removeDeal, deduplicateDeals, isOverdueDeal } from '../utils/dealStorage';
+import { Deal, PipelineStage, UserRole, PipelineFilterOptions, UserProfile } from '../types';
+import { fetchStoredDeals, subscribeToDealChanges, removeDeal, deduplicateDeals, isOverdueDeal, isDealVisibleToUser } from '../utils/dealStorage';
 import { DatePreset, DateTargetField, getDateRangeFromPreset, matchesDateRange, getKSTTodayString } from '../utils/dateFilter';
 import { DateFilterControl } from './DateFilterControl';
 
@@ -299,6 +299,25 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
     setSelectedType('all');
   };
 
+  // 프로필 목록 (부서 관리자 매핑용)
+  const [profiles, setProfiles] = useState<UserProfile[]>([]);
+
+  useEffect(() => {
+    try {
+      const savedAdminProfiles = localStorage.getItem('admin_user_profiles');
+      const savedPipelineProfiles = localStorage.getItem('sales_pipeline_profiles');
+      const targetSaved = savedAdminProfiles || savedPipelineProfiles;
+      if (targetSaved) {
+        const parsed = JSON.parse(targetSaved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setProfiles(parsed);
+        }
+      }
+    } catch (e) {
+      console.warn('프로필 로드 오류:', e);
+    }
+  }, []);
+
   // 벤더 목록 생성 (딜 상세 내역 기반 - Dell, AWS 제외)
   const vendorList = useMemo(() => {
     const set = new Set<string>();
@@ -314,10 +333,15 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
     return list;
   }, [deals]);
 
+  // 권한(Role) 및 부서 기반 가시 딜 목록 계산
+  const visibleDeals = useMemo(() => {
+    return deals.filter(deal => isDealVisibleToUser(deal, profile, role, profiles));
+  }, [deals, profile, role, profiles]);
+
   // 영업담당자 목록 생성 (딜 상세 내역 기반)
   const repOptions = useMemo(() => {
     const repSet = new Set<string>();
-    deals.forEach(d => {
+    visibleDeals.forEach(d => {
       if (d.sales_rep_name) {
         const clean = d.sales_rep_name.replace(/\s*\(.*?\)/g, '').trim();
         if (clean) repSet.add(clean);
@@ -328,29 +352,12 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
       if (clean) repSet.add(clean);
     }
     return Array.from(repSet);
-  }, [deals, profile?.full_name]);
+  }, [visibleDeals, profile?.full_name]);
 
   // 검색 및 상세 필터(단계 제외)가 적용된 기본 딜 목록
   const baseFilteredDeals = useMemo(() => {
-    return deals.filter(deal => {
-      // 영업 담당 권한인 경우 본인의 딜만 반환
-      if (role === 'sales_rep') {
-        const repName = (deal.sales_rep_name || '').trim();
-        const repId = (deal.sales_rep_id || '').trim();
-        const userId = (profile?.id || '').trim();
-        const userFullName = (profile?.full_name || '').trim();
-        const cleanUserName = userFullName.replace(/\s*\(.*?\)/g, '').trim();
-
-        const isMyDeal = Boolean(
-          (userId && repId && repId === userId) ||
-          (userFullName && repName && repName === userFullName) ||
-          (cleanUserName && repName && (repName.includes(cleanUserName) || cleanUserName.includes(repName)))
-        );
-
-        if (!isMyDeal) return false;
-      }
-
-      // 관리자 / 팀장 계정에서 영업 담당자 필터 적용
+    return visibleDeals.filter(deal => {
+      // 영업 담당자 필터 적용 (role이 sales_rep인 경우는 이미 visibleDeals에서 본인 것만 필터링됨)
       if (role !== 'sales_rep' && selectedRepFilter !== 'all') {
         const dealRepClean = (deal.sales_rep_name || '').replace(/\s*\(.*?\)/g, '').trim();
         const filterRepClean = selectedRepFilter.replace(/\s*\(.*?\)/g, '').trim();
@@ -395,7 +402,7 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
 
       return true;
     });
-  }, [deals, searchTerm, selectedVendor, selectedType, selectedRepFilter, onlyOverdue, datePreset, dateTargetField, startDate, endDate, role, profile]);
+  }, [visibleDeals, role, selectedRepFilter, onlyOverdue, dateTargetField, startDate, endDate, searchTerm, selectedVendor, selectedType]);
 
   // 지연 딜 개수 계산 (현재 기본 필터 기준)
   const overdueCount = useMemo(() => {

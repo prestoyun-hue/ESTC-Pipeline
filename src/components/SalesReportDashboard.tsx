@@ -12,8 +12,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Deal, PipelineStage } from '../types';
-import { fetchStoredDeals, subscribeToDealChanges, isOverdueDeal, deduplicateDeals } from '../utils/dealStorage';
+import { Deal, PipelineStage, UserProfile } from '../types';
+import { fetchStoredDeals, subscribeToDealChanges, isOverdueDeal, deduplicateDeals, isDealVisibleToUser } from '../utils/dealStorage';
 import {
   WorkReportPreset,
   DateTargetField,
@@ -164,58 +164,65 @@ export const SalesReportDashboard: React.FC = () => {
     setEndDate(range.endDate);
   };
 
+  // 프로필 목록 (부서 관리자 매핑용)
+  const [profiles, setProfiles] = useState<UserProfile[]>([]);
+
+  useEffect(() => {
+    try {
+      const savedAdminProfiles = localStorage.getItem('admin_user_profiles');
+      const savedPipelineProfiles = localStorage.getItem('sales_pipeline_profiles');
+      const targetSaved = savedAdminProfiles || savedPipelineProfiles;
+      if (targetSaved) {
+        const parsed = JSON.parse(targetSaved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setProfiles(parsed);
+        }
+      }
+    } catch (e) {
+      console.warn('프로필 로드 오류:', e);
+    }
+  }, []);
+
+  // 권한 및 부서 기반 가시 딜 목록
+  const visibleDeals = useMemo(() => {
+    return deals.filter(deal => isDealVisibleToUser(deal, profile, role, profiles));
+  }, [deals, profile, role, profiles]);
+
   // 영업담당자 목록 추출
   const repOptions = useMemo(() => {
     const set = new Set<string>();
-    deals.forEach(d => {
+    visibleDeals.forEach(d => {
       if (d.sales_rep_name) {
         const cleanName = d.sales_rep_name.trim();
         if (cleanName) set.add(cleanName);
       }
     });
     return Array.from(set).sort();
-  }, [deals]);
+  }, [visibleDeals]);
 
   // 벤더 목록 추출
   const vendorList = useMemo(() => {
     const set = new Set<string>();
-    deals.forEach(d => {
+    visibleDeals.forEach(d => {
       if (d.vendor) {
         const v = d.vendor.trim();
         if (v) set.add(v);
       }
     });
     return Array.from(set).sort();
-  }, [deals]);
+  }, [visibleDeals]);
 
   // 지연 딜 개수 계산
   const overdueCount = useMemo(() => {
-    return deals.filter(isOverdueDeal).length;
-  }, [deals]);
+    return visibleDeals.filter(isOverdueDeal).length;
+  }, [visibleDeals]);
 
   // =========================================================================
   // [영업리포트 필터링 로직 기반 적용]
   // =========================================================================
   const filteredDeals = useMemo(() => {
-    return deals.filter(deal => {
-      // 1. 영업 담당 권한인 경우 본인의 딜만 반환
-      if (role === 'sales_rep') {
-        const repName = (deal.sales_rep_name || '').trim();
-        const repId = (deal.sales_rep_id || '').trim();
-        const userId = (profile?.id || '').trim();
-        const userFullName = (profile?.full_name || '').trim();
-        const cleanUserName = userFullName.replace(/\s*\(.*?\)/g, '').trim();
-
-        const isMyDeal = Boolean(
-          (userId && repId && repId === userId) ||
-          (userFullName && repName && repName === userFullName) ||
-          (cleanUserName && repName && (repName.includes(cleanUserName) || cleanUserName.includes(repName)))
-        );
-
-        if (!isMyDeal) return false;
-      }
-
-      // 2. 관리자 / 팀장 계정에서 영업 담당자 필터 적용 (role !== 'sales_rep')
+    return visibleDeals.filter(deal => {
+      // 1. 관리자 / 부서장 계정에서 영업 담당자 필터 적용 (role !== 'sales_rep')
       if (role !== 'sales_rep' && selectedRepFilter !== 'all') {
         const dealRepClean = (deal.sales_rep_name || '').replace(/\s*\(.*?\)/g, '').trim();
         const filterRepClean = selectedRepFilter.replace(/\s*\(.*?\)/g, '').trim();
@@ -224,17 +231,17 @@ export const SalesReportDashboard: React.FC = () => {
         if (!matchesRep) return false;
       }
 
-      // 3. 지연 딜만 보기 필터
+      // 2. 지연 딜만 보기 필터
       if (onlyOverdue && !isOverdueDeal(deal)) {
         return false;
       }
 
-      // 4. 기간 필터 적용
+      // 3. 기간 필터 적용
       if (!matchesDateRange(deal, dateTargetField, startDate, endDate)) {
         return false;
       }
 
-      // 5. 단계 필터
+      // 4. 단계 필터
       if (selectedStage !== 'all') {
         if (selectedStage === 'forecast') {
           if (deal.stage === 'closed_won' || deal.stage === 'closed_lost') return false;
@@ -243,33 +250,32 @@ export const SalesReportDashboard: React.FC = () => {
         }
       }
 
-      // 6. 벤더 필터
+      // 5. 벤더 필터
       if (selectedVendor !== 'all') {
         if ((deal.vendor || '').trim() !== selectedVendor) return false;
       }
 
-      // 7. 구분(신규/갱신) 필터
+      // 6. 구분 필터
       if (selectedType !== 'all') {
         if ((deal.deal_type || '').trim() !== selectedType) return false;
       }
 
-      // 8. 키워드 검색 (고객사, 파트너사, 건명, 담당자, Deal-ID, 제품명)
+      // 7. 검색어 필터
       if (searchTerm.trim()) {
         const term = searchTerm.toLowerCase();
         const matchTitle = deal.title.toLowerCase().includes(term);
         const matchCompany = deal.company.toLowerCase().includes(term);
         const matchPartner = (deal.partner_name || '').toLowerCase().includes(term);
         const matchRep = (deal.sales_rep_name || '').toLowerCase().includes(term);
-        const matchCode = (deal.deal_code || '').toLowerCase().includes(term);
         const matchProduct = (deal.product_name || '').toLowerCase().includes(term);
-        if (!matchTitle && !matchCompany && !matchPartner && !matchRep && !matchCode && !matchProduct) {
+        if (!matchTitle && !matchCompany && !matchPartner && !matchRep && !matchProduct) {
           return false;
         }
       }
 
       return true;
     });
-  }, [deals, role, profile?.id, profile?.full_name, selectedRepFilter, onlyOverdue, dateTargetField, startDate, endDate, selectedStage, selectedVendor, selectedType, searchTerm]);
+  }, [visibleDeals, role, selectedRepFilter, onlyOverdue, dateTargetField, startDate, endDate, selectedStage, selectedVendor, selectedType, searchTerm]);
 
   // =========================================================================
   // [전 기간(Previous Period) 대비 증감률 계산 로직]

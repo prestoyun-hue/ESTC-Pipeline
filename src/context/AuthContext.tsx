@@ -54,6 +54,24 @@ export const DEMO_PROFILES: UserProfile[] = [
     created_at: new Date().toISOString(),
   },
   {
+    id: 'demo-dept-manager-01',
+    email: 'dept_manager@company.com',
+    full_name: '강팀장',
+    role: 'dept_manager',
+    department: '영업 1팀',
+    avatar_url: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150',
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'demo-viewer-01',
+    email: 'viewer@company.com',
+    full_name: '송조회',
+    role: 'viewer',
+    department: '경영지원본부',
+    avatar_url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150',
+    created_at: new Date().toISOString(),
+  },
+  {
     id: 'demo-manager-01',
     email: 'manager@company.com',
     full_name: '박관리',
@@ -75,8 +93,10 @@ export const DEMO_PROFILES: UserProfile[] = [
 
 const MOCK_PROFILES: Record<UserRole, UserProfile> = {
   sales_rep: DEMO_PROFILES[0],
-  manager: DEMO_PROFILES[2],
-  admin: DEMO_PROFILES[3],
+  dept_manager: DEMO_PROFILES[3],
+  manager: DEMO_PROFILES[5],
+  admin: DEMO_PROFILES[6],
+  viewer: DEMO_PROFILES[4],
 };
 
 // Auth Context 인터페이스

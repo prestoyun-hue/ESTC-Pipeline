@@ -1,6 +1,84 @@
-import { Deal } from '../types';
+import { Deal, UserProfile, UserRole } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { getKSTTodayString } from './dateFilter';
+
+/**
+ * 사용자 권한(Role) 및 부서(Department)에 따른 딜 가시성 판단 헬퍼
+ * - admin / viewer / manager: 전사 딜 조회 가능
+ * - dept_manager: 본인 소속 부서(department)와 동일한 부서 소속 영업담당자의 딜만 조회 가능
+ * - sales_rep: 본인(id 또는 이름)이 담당자인 딜만 조회 가능
+ */
+export const isDealVisibleToUser = (
+  deal: Deal,
+  profile: UserProfile | null,
+  role: UserRole,
+  allProfiles: UserProfile[] = []
+): boolean => {
+  // 1. 전체 관리자, 뷰어, 전사 매니저는 전체 열람 가능
+  if (role === 'admin' || role === 'viewer' || role === 'manager') {
+    return true;
+  }
+
+  // 2. 프로필 정보가 없으면 기본 차단
+  if (!profile) return false;
+
+  const repId = (deal.sales_rep_id || '').trim();
+  const repName = (deal.sales_rep_name || '').trim();
+  const userId = (profile.id || '').trim();
+  const userFullName = (profile.full_name || '').trim();
+  const cleanUserName = userFullName.replace(/\s*\(.*?\)/g, '').trim();
+
+  // 3. 일반 영업 담당 (sales_rep): 본인 딜만 확인
+  if (role === 'sales_rep') {
+    return Boolean(
+      (userId && repId && repId === userId) ||
+      (userFullName && repName && repName === userFullName) ||
+      (cleanUserName && repName && (repName.includes(cleanUserName) || cleanUserName.includes(repName)))
+    );
+  }
+
+  // 4. 부서 관리자 (dept_manager): 본인 부서와 동일한 부서에 속한 담당자들의 딜 확인
+  if (role === 'dept_manager') {
+    const myDept = (profile.department || '').trim();
+    if (!myDept) {
+      // 본인의 부서 정보가 없으면 본인 딜만 안전하게 노출
+      return Boolean(
+        (userId && repId && repId === userId) ||
+        (userFullName && repName && repName === userFullName) ||
+        (cleanUserName && repName && (repName.includes(cleanUserName) || cleanUserName.includes(repName)))
+      );
+    }
+
+    // 본인의 딜인 경우 무조건 포함
+    const isMyOwnDeal = Boolean(
+      (userId && repId && repId === userId) ||
+      (userFullName && repName && repName === userFullName) ||
+      (cleanUserName && repName && (repName.includes(cleanUserName) || cleanUserName.includes(repName)))
+    );
+    if (isMyOwnDeal) return true;
+
+    // 해당 딜의 영업 담당자 프로필 탐색
+    const repProfile = allProfiles.find(p => {
+      const pId = (p.id || '').trim();
+      const pName = (p.full_name || '').trim();
+      const cleanPName = pName.replace(/\s*\(.*?\)/g, '').trim();
+      return (
+        (repId && pId && repId === pId) ||
+        (repName && pName && repName === pName) ||
+        (repName && cleanPName && (repName.includes(cleanPName) || cleanPName.includes(repName)))
+      );
+    });
+
+    if (repProfile && (repProfile.department || '').trim() === myDept) {
+      return true;
+    }
+
+    // 프로필에 부서 정보가 일치하지 않거나 찾지 못한 경우 제외
+    return false;
+  }
+
+  return true;
+};
 
 /**
  * 예상 매출일이 지났고, 진행단계가 0%나 100%가 아닌 딜인지 체크 (경고/강조 대상)

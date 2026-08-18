@@ -11,8 +11,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Deal, PipelineStage } from '../types';
-import { fetchStoredDeals, subscribeToDealChanges, deduplicateDeals } from '../utils/dealStorage';
+import { Deal, PipelineStage, UserProfile } from '../types';
+import { fetchStoredDeals, subscribeToDealChanges, deduplicateDeals, isDealVisibleToUser } from '../utils/dealStorage';
 import { WorkReportPreset, getWorkReportDateRange, formatDateToYMD, getKSTNow } from '../utils/dateFilter';
 import { DealFormModal } from './DealFormModal';
 import {
@@ -133,22 +133,38 @@ export const WorkReportTable: React.FC = () => {
     setEndDate(range.endDate);
   };
 
-  // 영업담당자 목록 추출
-  const salesReps = useMemo(() => {
-    const set = new Set<string>();
-    deals.forEach(d => {
-      if (d.sales_rep_name) set.add(d.sales_rep_name);
-    });
-    return Array.from(set);
-  }, [deals]);
+  // 프로필 목록 (부서 관리자 매핑용)
+  const [profiles, setProfiles] = useState<UserProfile[]>([]);
+
+  useEffect(() => {
+    try {
+      const savedAdminProfiles = localStorage.getItem('admin_user_profiles');
+      const savedPipelineProfiles = localStorage.getItem('sales_pipeline_profiles');
+      const targetSaved = savedAdminProfiles || savedPipelineProfiles;
+      if (targetSaved) {
+        const parsed = JSON.parse(targetSaved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setProfiles(parsed);
+        }
+      }
+    } catch (e) {
+      console.warn('프로필 로드 오류:', e);
+    }
+  }, []);
 
   // 권한에 따른 기본 가시 딜 목록
   const visibleDeals = useMemo(() => {
-    if (role === 'sales_rep' && profile?.full_name) {
-      return deals.filter(d => d.sales_rep_name === profile.full_name);
-    }
-    return deals;
-  }, [deals, role, profile?.full_name]);
+    return deals.filter(deal => isDealVisibleToUser(deal, profile, role, profiles));
+  }, [deals, profile, role, profiles]);
+
+  // 영업담당자 목록 추출
+  const salesReps = useMemo(() => {
+    const set = new Set<string>();
+    visibleDeals.forEach(d => {
+      if (d.sales_rep_name) set.add(d.sales_rep_name);
+    });
+    return Array.from(set);
+  }, [visibleDeals]);
 
   // 필터링된 보고서 딜 목록 (업데이트 일자 기준)
   const filteredDeals = useMemo(() => {

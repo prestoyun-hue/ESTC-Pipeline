@@ -10,8 +10,9 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Deal } from '../types';
-import { fetchStoredDeals, subscribeToDealChanges, deduplicateDeals } from '../utils/dealStorage';
+import { useAuth } from '../context/AuthContext';
+import { Deal, UserProfile } from '../types';
+import { fetchStoredDeals, subscribeToDealChanges, deduplicateDeals, isDealVisibleToUser } from '../utils/dealStorage';
 import { getKSTNow, matchesDateRange, DateTargetField } from '../utils/dateFilter';
 import {
   TrendingUp,
@@ -114,9 +115,30 @@ const CardWithSpeechBubble: React.FC<CardWithSpeechBubbleProps> = ({
 };
 
 export const TeamAnalytics: React.FC = () => {
+  const { profile, role } = useAuth();
+
   // 1. 실데이터 연동 상태
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+
+  // 프로필 목록 (부서 관리자 매핑용)
+  const [profiles, setProfiles] = useState<UserProfile[]>([]);
+
+  useEffect(() => {
+    try {
+      const savedAdminProfiles = localStorage.getItem('admin_user_profiles');
+      const savedPipelineProfiles = localStorage.getItem('sales_pipeline_profiles');
+      const targetSaved = savedAdminProfiles || savedPipelineProfiles;
+      if (targetSaved) {
+        const parsed = JSON.parse(targetSaved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setProfiles(parsed);
+        }
+      }
+    } catch (e) {
+      console.warn('프로필 로드 오류:', e);
+    }
+  }, []);
 
   // 2. 기간 선택 필터 상태 (월 / 분기 / 연)
   const [periodType, setPeriodType] = useState<AnalyticsPeriodType>('month');
@@ -221,10 +243,15 @@ export const TeamAnalytics: React.FC = () => {
     }
   };
 
+  // 권한 및 부서 기반 가시 딜 목록
+  const visibleDeals = useMemo(() => {
+    return deals.filter(deal => isDealVisibleToUser(deal, profile, role, profiles));
+  }, [deals, profile, role, profiles]);
+
   // 3. 기간 필터링 적용된 실데이터
   const filteredDeals = useMemo(() => {
-    return deals.filter(deal => matchesDateRange(deal, dateTargetField, startDate, endDate));
-  }, [deals, dateTargetField, startDate, endDate]);
+    return visibleDeals.filter(deal => matchesDateRange(deal, dateTargetField, startDate, endDate));
+  }, [visibleDeals, dateTargetField, startDate, endDate]);
 
   // 4. 수주 실적 실데이터 핵심 지표 계산
   

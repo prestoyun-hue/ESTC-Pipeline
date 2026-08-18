@@ -3,8 +3,8 @@
  * 사용자 역할(Role), 프로필, 영업 거래(Deal), 파이프라인 단계 관련 인터페이스
  */
 
-// 사용자 역할 정의 (영업 담당, 영업 관리, 시스템 관리자)
-export type UserRole = 'sales_rep' | 'manager' | 'admin';
+// 사용자 역할 정의 (시스템 관리자, 부서 관리자, 영업 담당, 조회 전용 뷰어)
+export type UserRole = 'admin' | 'dept_manager' | 'manager' | 'sales_rep' | 'viewer';
 
 // Supabase profiles 테이블 데이터 인터페이스
 export interface UserProfile {

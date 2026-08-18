@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   full_name TEXT,
   name TEXT,
   department TEXT,
-  role TEXT DEFAULT 'sales_rep',
+  role TEXT DEFAULT 'sales_rep' CHECK (role IN ('admin', 'dept_manager', 'manager', 'sales_rep', 'viewer')),
   password TEXT,
   is_disabled BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -94,6 +94,15 @@ const INITIAL_PROFILES: UserProfile[] = [
     created_at: '2026-08-01T09:00:00Z',
   },
   {
+    id: 'e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55',
+    email: 'dept_manager@company.com',
+    full_name: '강팀장',
+    role: 'dept_manager',
+    department: '영업 1팀',
+    is_disabled: false,
+    created_at: '2026-08-01T09:30:00Z',
+  },
+  {
     id: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22',
     email: 'manager@company.com',
     full_name: '김관리',
@@ -119,6 +128,15 @@ const INITIAL_PROFILES: UserProfile[] = [
     department: '영업 2팀',
     is_disabled: false,
     created_at: '2026-08-02T11:30:00Z',
+  },
+  {
+    id: 'f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a66',
+    email: 'viewer@company.com',
+    full_name: '송조회',
+    role: 'viewer',
+    department: '경영지원본부',
+    is_disabled: false,
+    created_at: '2026-08-03T09:00:00Z',
   }
 ];
 
@@ -691,12 +709,24 @@ export const AdminRoleManager: React.FC = () => {
                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold inline-flex items-center space-x-1 ${
                       p.role === 'admin' 
                         ? 'bg-amber-50 border border-amber-200 text-amber-800' 
+                        : p.role === 'dept_manager'
+                        ? 'bg-indigo-50 border border-indigo-200 text-indigo-800'
                         : p.role === 'manager'
                         ? 'bg-purple-50 border border-purple-200 text-purple-800'
+                        : p.role === 'viewer'
+                        ? 'bg-slate-100 border border-slate-300 text-slate-700'
                         : 'bg-blue-50 border border-blue-200 text-blue-800'
                     }`}>
                       <span>
-                        {p.role === 'admin' ? '시스템 관리자' : p.role === 'manager' ? '영업 관리자' : '영업 담당'}
+                        {p.role === 'admin' 
+                          ? '시스템 관리자' 
+                          : p.role === 'dept_manager'
+                          ? '부서 관리자'
+                          : p.role === 'manager' 
+                          ? '영업 관리자' 
+                          : p.role === 'viewer'
+                          ? '조회 전용'
+                          : '영업 담당'}
                       </span>
                     </span>
                   </td>
@@ -857,9 +887,10 @@ export const AdminRoleManager: React.FC = () => {
                   onChange={(e) => setEditRole(e.target.value as UserRole)}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                 >
-                  <option value="sales_rep">영업 담당 (sales_rep)</option>
-                  <option value="manager">영업 관리자 (manager)</option>
-                  <option value="admin">시스템 관리자 (admin)</option>
+                  <option value="admin">1. 시스템 관리자 (admin - 전사 모든 권한)</option>
+                  <option value="dept_manager">2. 부서 관리자 (dept_manager - 소속 부서 딜 관리)</option>
+                  <option value="sales_rep">3. 영업 담당 (sales_rep - 본인 딜만 관리)</option>
+                  <option value="viewer">4. 조회 전용 (viewer - 읽기 전용)</option>
                 </select>
               </div>
 
@@ -1009,9 +1040,10 @@ export const AdminRoleManager: React.FC = () => {
                   onChange={(e) => setNewRole(e.target.value as UserRole)}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                 >
-                  <option value="sales_rep">영업 담당 (sales_rep)</option>
-                  <option value="manager">영업 관리자 (manager)</option>
-                  <option value="admin">시스템 관리자 (admin)</option>
+                  <option value="admin">1. 시스템 관리자 (admin - 전사 모든 권한)</option>
+                  <option value="dept_manager">2. 부서 관리자 (dept_manager - 소속 부서 딜 관리)</option>
+                  <option value="sales_rep">3. 영업 담당 (sales_rep - 본인 딜만 관리)</option>
+                  <option value="viewer">4. 조회 전용 (viewer - 읽기 전용)</option>
                 </select>
               </div>
 

@@ -11,10 +11,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Deal, PipelineStage, PipelineFilterOptions } from '../types';
+import { Deal, PipelineStage, PipelineFilterOptions, UserProfile } from '../types';
 import { DealFormModal } from './DealFormModal';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
-import { fetchStoredDeals, subscribeToDealChanges, deduplicateDeals, isOverdueDeal } from '../utils/dealStorage';
+import { fetchStoredDeals, subscribeToDealChanges, deduplicateDeals, isOverdueDeal, isDealVisibleToUser } from '../utils/dealStorage';
 import { DatePreset, DateTargetField, getDateRangeFromPreset, matchesDateRange } from '../utils/dateFilter';
 import { DateFilterControl } from './DateFilterControl';
 import { 
@@ -208,6 +208,25 @@ export const SalesPipeline: React.FC<SalesPipelineProps> = ({ onNavigateToTable 
     }));
   };
 
+  // 프로필 목록 (부서 관리자 매핑용)
+  const [profiles, setProfiles] = useState<UserProfile[]>([]);
+
+  useEffect(() => {
+    try {
+      const savedAdminProfiles = localStorage.getItem('admin_user_profiles');
+      const savedPipelineProfiles = localStorage.getItem('sales_pipeline_profiles');
+      const targetSaved = savedAdminProfiles || savedPipelineProfiles;
+      if (targetSaved) {
+        const parsed = JSON.parse(targetSaved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setProfiles(parsed);
+        }
+      }
+    } catch (e) {
+      console.warn('프로필 로드 오류:', e);
+    }
+  }, []);
+
   // 딜 데이터 로드 및 실시간 구독
   const loadDeals = async (forceRefresh: boolean = false) => {
     setLoadingDB(true);
@@ -267,10 +286,15 @@ export const SalesPipeline: React.FC<SalesPipelineProps> = ({ onNavigateToTable 
     setDeals(prev => prev.filter(d => d.id !== deletedId));
   };
 
+  // 권한(Role) 및 부서 기반 가시 딜 목록 계산
+  const visibleDeals = useMemo(() => {
+    return deals.filter(deal => isDealVisibleToUser(deal, profile, role, profiles));
+  }, [deals, profile, role, profiles]);
+
   // 등록된 딜 상세 내역 기반으로 영업담당자 드롭다운 목록 동적 구성
   const repOptions = useMemo(() => {
     const repSet = new Set<string>();
-    deals.forEach(d => {
+    visibleDeals.forEach(d => {
       if (d.sales_rep_name) {
         const clean = d.sales_rep_name.replace(/\s*\(.*?\)/g, '').trim();
         if (clean) repSet.add(clean);
@@ -281,28 +305,7 @@ export const SalesPipeline: React.FC<SalesPipelineProps> = ({ onNavigateToTable 
       if (clean) repSet.add(clean);
     }
     return Array.from(repSet);
-  }, [deals, profile?.full_name]);
-
-  // 영업 담당(sales_rep) 권한 체크 및 본인 딜 필터링
-  const visibleDeals = deals.filter(deal => {
-    if (role === 'sales_rep') {
-      const repName = (deal.sales_rep_name || '').trim();
-      const repId = (deal.sales_rep_id || '').trim();
-      const userId = (profile?.id || '').trim();
-      const userFullName = (profile?.full_name || '').trim();
-      const cleanUserName = userFullName.replace(/\s*\(.*?\)/g, '').trim();
-
-      const isMyDeal = Boolean(
-        (userId && repId && repId === userId) ||
-        (userFullName && repName && repName === userFullName) ||
-        (cleanUserName && repName && (repName.includes(cleanUserName) || cleanUserName.includes(repName)))
-      );
-
-      return isMyDeal;
-    }
-    // manager, admin 등의 권한인 경우 모든 딜 가시성 허용
-    return true;
-  });
+  }, [visibleDeals, profile?.full_name]);
 
   // 선택된 기간 기준 가시 딜 목록
   const dateFilteredDeals = useMemo(() => {
