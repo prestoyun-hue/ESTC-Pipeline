@@ -133,10 +133,28 @@ const initSupabaseRealtimeSubscription = () => {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'deals' },
         (payload: any) => {
-          console.log('[Supabase Realtime] deals 테이블 변경 수신:', payload.eventType);
-          // 메모리 캐시 무효화 후 최신 데이터 동기화
-          invalidateDealsCache();
-          fetchStoredDeals(true);
+          console.log('[Supabase Realtime] deals 테이블 변경 수신 (Egress 최적화 적용):', payload.eventType);
+          
+          if (!memoryDealsCache) {
+            // 메모리에 캐시가 아예 없다면 1회 로드하여 초기화
+            fetchStoredDeals(true);
+            return;
+          }
+
+          let currentDeals = [...memoryDealsCache];
+          if (payload.eventType === 'INSERT' && payload.new) {
+            const exists = currentDeals.some(d => d.id === payload.new.id);
+            if (!exists) {
+              currentDeals = [payload.new, ...currentDeals];
+            }
+          } else if (payload.eventType === 'UPDATE' && payload.new) {
+            currentDeals = currentDeals.map(d => d.id === payload.new.id ? payload.new : d);
+          } else if (payload.eventType === 'DELETE' && payload.old) {
+            currentDeals = currentDeals.filter(d => d.id !== payload.old.id);
+          }
+          
+          // 재조회(fetchStoredDeals)를 호출하지 않고, 캐시를 직접 조작하여 Egress 트래픽을 방어함
+          saveToLocalStorage(currentDeals);
         }
       )
       .subscribe((status: string) => {
@@ -366,13 +384,12 @@ export const deduplicateDeals = (deals: Deal[]): Deal[] => {
  * @param forceRefresh - 캐시를 무시하고 Supabase에서 강제 재조회할지 여부
  */
 export const fetchStoredDeals = async (forceRefresh: boolean = false): Promise<Deal[]> => {
-  const now = Date.now();
-
   // 1. Supabase Realtime 구독 보장 (최초 1회 연결)
   initSupabaseRealtimeSubscription();
 
   // 2. [Egress 최적화] 유효한 메모리 캐시가 있고 강제 갱신이 아니면 즉시 캐시 반환 (0ms, 네트워크 0B 소모)
-  if (!forceRefresh && memoryDealsCache && (now - lastFetchTimestamp < CACHE_TTL_MS)) {
+  // Realtime 구독을 통해 캐시가 항상 최신 상태로 유지되므로 TTL(유효기간) 만료로 인한 전체 재조회를 방지함
+  if (!forceRefresh && memoryDealsCache) {
     return memoryDealsCache;
   }
 
