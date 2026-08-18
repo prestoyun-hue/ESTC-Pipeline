@@ -92,9 +92,6 @@ export const AuthForm: React.FC = () => {
           <h2 className="text-2xl font-bold tracking-tight text-slate-900">
             ESTC Sales Pipeline
           </h2>
-          <p className="text-xs text-slate-500 mt-1.5">
-            역할 기반 영업 파이프라인 관리 솔루션
-          </p>
         </div>
 
         {/* 폼 영역 */}
