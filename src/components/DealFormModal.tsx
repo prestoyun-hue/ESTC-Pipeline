@@ -71,6 +71,7 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
   const { role } = useAuth();
   const isAdmin = role === 'admin';
   const isSalesRep = role === 'sales_rep';
+  const isViewer = role === 'viewer';
   const isManagerOrAdmin = role === 'manager' || role === 'admin';
 
   // 모드 판별
@@ -351,6 +352,11 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
   // 폼 제출 (INSERT / UPDATE)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isViewer) {
+      setToastMessage({ type: 'error', text: '뷰어(읽기전용) 권한은 딜을 등록하거나 수정할 수 없습니다.' });
+      return;
+    }
 
     // Validation
     if (!company.trim()) {
@@ -707,15 +713,22 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
           <div className="flex items-center space-x-3">
-            <div className={`p-2.5 rounded-xl ${isEditMode ? 'bg-amber-500 text-white' : 'bg-blue-600 text-white'} shadow-xs`}>
+            <div className={`p-2.5 rounded-xl ${isViewer ? 'bg-slate-500 text-white' : isEditMode ? 'bg-amber-500 text-white' : 'bg-blue-600 text-white'} shadow-xs`}>
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">
-                {isEditMode ? `영업 딜 수정 (${dealCode})` : '딜 등록'}
+              <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                <span>{isViewer ? `영업 딜 상세 조회 (${dealCode || '조회 전용'})` : isEditMode ? `영업 딜 수정 (${dealCode})` : '딜 등록'}</span>
+                {isViewer && (
+                  <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-bold rounded-md border border-slate-300">
+                    조회 전용 (Viewer)
+                  </span>
+                )}
               </h3>
               <p className="text-xs text-slate-500 font-medium">
-                {isAdmin ? (
+                {isViewer ? (
+                  '뷰어 권한으로 접속 중입니다. 상세 정보를 열람할 수 있습니다.'
+                ) : isAdmin ? (
                   isSupabaseConfigured 
                     ? 'Supabase `deals` 테이블에 실시간 반영되는 CRUD 폼입니다.' 
                     : 'Supabase 연동 준비 모드 (로컬 실시간 업데이트)'
@@ -752,6 +765,7 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
 
         {/* Form Body - Grid Layout */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-6 flex-1">
+          <fieldset disabled={isViewer} className="space-y-6 disabled:opacity-90">
           
           {/* 섹션 1: 고객 정보 */}
           <div>
@@ -1258,14 +1272,16 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
                           작성자: {h.updated_by_name || '담당자'}
                         </span>
 
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteHistoryItem(h.id)}
-                          title="이력 삭제"
-                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-all cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {!isViewer && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteHistoryItem(h.id)}
+                            title="이력 삭제"
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-all cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -1284,12 +1300,13 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
             </div>
           )}
 
+          </fieldset>
         </form>
 
         {/* Footer Actions */}
         <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
           <div>
-            {isEditMode && onDeleteSuccess && isAdmin && (
+            {isEditMode && onDeleteSuccess && isAdmin && !isViewer && (
               <button
                 type="button"
                 onClick={handleDelete}
@@ -1308,10 +1325,10 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
               onClick={onClose}
               className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer"
             >
-              취소
+              {isViewer ? '닫기' : '취소'}
             </button>
 
-            {isEditMode && !isSalesRep && (
+            {!isViewer && isEditMode && !isSalesRep && (
               <button
                 type="button"
                 onClick={handleSaveAsNew}
@@ -1324,29 +1341,31 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
               </button>
             )}
 
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={submitting || deleting || (isEditMode && !hasChanges)}
-              className={`px-5 py-2 text-xs font-bold rounded-xl shadow-xs transition-all flex items-center space-x-2 ${
-                isEditMode && !hasChanges
-                  ? 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed opacity-60'
-                  : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
-              }`}
-              title={isEditMode && !hasChanges ? '수정된 내용이 없습니다.' : undefined}
-            >
-              {submitting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>저장 처리 중...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  <span>{isEditMode ? '수정 저장' : '신규 저장'}</span>
-                </>
-              )}
-            </button>
+            {!isViewer && (
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={submitting || deleting || (isEditMode && !hasChanges)}
+                className={`px-5 py-2 text-xs font-bold rounded-xl shadow-xs transition-all flex items-center space-x-2 ${
+                  isEditMode && !hasChanges
+                    ? 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed opacity-60'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
+                }`}
+                title={isEditMode && !hasChanges ? '수정된 내용이 없습니다.' : undefined}
+              >
+                {submitting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>저장 처리 중...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>{isEditMode ? '수정 저장' : '신규 저장'}</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
 

@@ -567,14 +567,16 @@ export const SalesPipeline: React.FC<SalesPipelineProps> = ({ onNavigateToTable 
               <RefreshCw className={`w-4 h-4 ${loadingDB ? 'animate-spin text-blue-600' : ''}`} />
             </button>
 
-            {/* 신규 등록 버튼 */}
-            <button
-              onClick={handleOpenCreateModal}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center justify-center space-x-2 cursor-pointer shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              <span>딜 등록</span>
-            </button>
+            {/* 신규 등록 버튼 (뷰어 권한은 숨김) */}
+            {role !== 'viewer' && (
+              <button
+                onClick={handleOpenCreateModal}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center justify-center space-x-2 cursor-pointer shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>딜 등록</span>
+              </button>
+            )}
           </div>
         </div>
 

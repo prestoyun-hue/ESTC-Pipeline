@@ -584,16 +584,18 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : ''}`} />
           </button>
 
-          <button
-            onClick={() => {
-              setDealToEdit(null);
-              setIsModalOpen(true);
-            }}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>딜 등록</span>
-          </button>
+          {role !== 'viewer' && (
+            <button
+              onClick={() => {
+                setDealToEdit(null);
+                setIsModalOpen(true);
+              }}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>딜 등록</span>
+            </button>
+          )}
         </div>
       </div>
 
