@@ -388,7 +388,7 @@ export const AdminRoleManager: React.FC = () => {
     setNewDepartment('영업부');
     setNewRole('sales_rep');
     setNewPassword(generateSecureTempPassword(10));
-    setShowNewPassword(true);
+    setShowNewPassword(false);
     setIsAddModalOpen(true);
   };
 
@@ -475,7 +475,7 @@ export const AdminRoleManager: React.FC = () => {
   };
 
   /**
-   * 사용자 상세 모달 오픈
+   * 사용자 상세 모달 오픈 (보안: 기존 비밀번호는 절대 로드하거나 열람할 수 없도록 초기화)
    */
   const handleOpenUserDetail = (user: UserProfile) => {
     setSelectedUser(user);
@@ -484,7 +484,7 @@ export const AdminRoleManager: React.FC = () => {
     setEditDepartment(user.department || '영업부');
     setEditRole(user.role || 'sales_rep');
     setEditIsDisabled(!!user.is_disabled);
-    setEditPassword(user.password || '');
+    setEditPassword(''); // 보안 조치: 기존 비밀번호는 암호화되어 있어 UI에 노출하지 않음
     setShowEditPassword(false);
   };
 
@@ -506,6 +506,9 @@ export const AdminRoleManager: React.FC = () => {
 
     const targetUUID = isValidUUID(selectedUser.id) ? selectedUser.id : generateValidUUID();
 
+    // 새 비밀번호가 입력된 경우에만 교체하고, 미입력 시 기존 비밀번호 유지
+    const finalPassword = editPassword.trim() ? editPassword.trim() : (selectedUser.password || 'password123');
+
     const updatedUser: UserProfile = {
       ...selectedUser,
       id: targetUUID,
@@ -514,7 +517,7 @@ export const AdminRoleManager: React.FC = () => {
       department: editDepartment.trim() || '영업부',
       role: editRole,
       is_disabled: editIsDisabled,
-      password: editPassword,
+      password: finalPassword,
       updated_at: nowIso,
     };
 
@@ -525,7 +528,7 @@ export const AdminRoleManager: React.FC = () => {
     // 2. Supabase DB에 upsert (update 대신 upsert를 사용하여 레코드가 없으면 자동 생성, 있으면 즉시 수정)
     if (isSupabaseConfigured) {
       try {
-        const payload = {
+        const payload: any = {
           id: targetUUID,
           email: editEmail.trim(),
           full_name: editFullName.trim(),
@@ -533,9 +536,14 @@ export const AdminRoleManager: React.FC = () => {
           department: editDepartment.trim() || '영업부',
           role: editRole,
           is_disabled: editIsDisabled,
-          password: editPassword,
           updated_at: nowIso,
         };
+
+        if (editPassword.trim()) {
+          payload.password = editPassword.trim();
+        } else if (selectedUser.password) {
+          payload.password = selectedUser.password;
+        }
 
         let { error: upsertErr } = await supabase
           .from('profiles')
@@ -894,26 +902,32 @@ export const AdminRoleManager: React.FC = () => {
                 </select>
               </div>
 
-              {/* 비밀번호 관리 / 재발급 */}
-              <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl space-y-2">
+              {/* 비밀번호 관리 / 재설정 (보안: 기존 비밀번호는 열람 불가) */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-800 flex items-center space-x-1">
-                    <KeyRound className="w-3.5 h-3.5 text-blue-600" />
-                    <span>비밀번호 재발급 및 수정</span>
+                  <label className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                    <Lock className="w-3.5 h-3.5 text-blue-600" />
+                    <span>비밀번호 재설정 (보안 관리)</span>
                   </label>
                   <button
                     type="button"
                     onClick={() => {
                       const tempPw = generateSecureTempPassword(10);
                       setEditPassword(tempPw);
-                      setShowEditPassword(true);
-                      alert(`[임시 비밀번호 생성 완료]\n\n생성된 임시 비밀번호: ${tempPw}\n\n하단의 [변경사항 저장] 버튼을 눌러 확정해주세요.`);
+                      setShowEditPassword(false);
                     }}
-                    className="text-[11px] bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded-lg font-bold flex items-center space-x-1 cursor-pointer transition-all shadow-2xs"
+                    className="text-[11px] bg-slate-200 hover:bg-slate-300 text-slate-700 px-2.5 py-1 rounded-lg font-bold flex items-center space-x-1 cursor-pointer transition-all shadow-2xs"
                   >
                     <RefreshCw className="w-3 h-3" />
-                    <span>임시 비밀번호 생성</span>
+                    <span>임시 비밀번호 발급</span>
                   </button>
+                </div>
+
+                <div className="p-2.5 bg-blue-50/70 border border-blue-100 rounded-lg text-[11px] text-blue-800 leading-relaxed flex items-start space-x-2">
+                  <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>비밀번호 보안 정책:</strong> 사용자의 기존 비밀번호는 암호화되어 있어 관리자 및 담당자를 포함한 누구에게도 열람되지 않습니다. 비밀번호 초기화가 필요한 경우에만 아래에 새 비밀번호를 입력하세요. (미입력 시 기존 비밀번호가 안전하게 유지됩니다.)
+                  </span>
                 </div>
                 
                 <div className="relative">
@@ -921,18 +935,23 @@ export const AdminRoleManager: React.FC = () => {
                     type={showEditPassword ? "text" : "password"}
                     value={editPassword}
                     onChange={(e) => setEditPassword(e.target.value)}
-                    placeholder="새 비밀번호 입력 (또는 임시 비밀번호)"
-                    className="w-full p-2.5 pr-10 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="변경 시에만 새 비밀번호 입력 (미입력 시 기존 유지)"
+                    className="w-full p-2.5 pr-10 bg-white border border-slate-200 rounded-xl text-xs font-mono font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <button
                     type="button"
                     onClick={() => setShowEditPassword(!showEditPassword)}
                     className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer"
-                    title={showEditPassword ? '비밀번호 숨기기' : '비밀번호 보기'}
+                    title={showEditPassword ? '비밀번호 숨기기' : '입력한 새 비밀번호 확인'}
                   >
                     {showEditPassword ? <EyeOff className="w-4 h-4 text-slate-500" /> : <Eye className="w-4 h-4 text-slate-400" />}
                   </button>
                 </div>
+                {editPassword && (
+                  <p className="text-[10px] text-amber-700 font-medium">
+                    * 새 비밀번호가 입력되었습니다. 하단의 [변경사항 저장]을 누르면 이 비밀번호로 갱신됩니다.
+                  </p>
+                )}
               </div>
 
               {/* 하단 동작 버튼 그룹 */}
