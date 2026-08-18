@@ -104,7 +104,6 @@ const MainContent: React.FC = () => {
         {activeTab === 'reports' && <SalesReportDashboard />}
         {activeTab === 'analytics' && <TeamAnalytics />}
         {activeTab === 'roles' && <AdminRoleManager />}
-        {activeTab === 'sql-guide' && role === 'admin' && <SupabaseSqlGuide />}
       </main>
 
 

@@ -124,47 +124,15 @@ export const invalidateDealsCache = () => {
  * Supabase Realtime Postgres Changes 구독 초기화 (전체 조회를 유발하지 않고 변경분만 동기화)
  */
 const initSupabaseRealtimeSubscription = () => {
-  if (!isSupabaseConfigured || !supabase || isRealtimeSubscribed) return;
-
+  // Egress 절감을 위해 실시간 웹소켓(Realtime) 구독을 비활성화 (100% 수동 동기화 모드로 전환)
+  // if (!isSupabaseConfigured || !supabase || isRealtimeSubscribed) return;
+  /*
   try {
     supabase
       .channel('public:deals_changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'deals' },
-        (payload: any) => {
-          console.log('[Supabase Realtime] deals 테이블 변경 수신 (Egress 최적화 적용):', payload.eventType);
-          
-          if (!memoryDealsCache) {
-            // 메모리에 캐시가 아예 없다면 1회 로드하여 초기화
-            fetchStoredDeals(true);
-            return;
-          }
-
-          let currentDeals = [...memoryDealsCache];
-          if (payload.eventType === 'INSERT' && payload.new) {
-            const exists = currentDeals.some(d => d.id === payload.new.id);
-            if (!exists) {
-              currentDeals = [payload.new, ...currentDeals];
-            }
-          } else if (payload.eventType === 'UPDATE' && payload.new) {
-            currentDeals = currentDeals.map(d => d.id === payload.new.id ? payload.new : d);
-          } else if (payload.eventType === 'DELETE' && payload.old) {
-            currentDeals = currentDeals.filter(d => d.id !== payload.old.id);
-          }
-          
-          // 재조회(fetchStoredDeals)를 호출하지 않고, 캐시를 직접 조작하여 Egress 트래픽을 방어함
-          saveToLocalStorage(currentDeals);
-        }
-      )
-      .subscribe((status: string) => {
-        if (status === 'SUBSCRIBED') {
-          isRealtimeSubscribed = true;
-        }
-      });
-  } catch (err) {
-    console.warn('[Supabase Realtime] 구독 초기화 실패:', err);
-  }
+      ...
+  */
+  return;
 };
 
 // 초기 샘플 데이터셋

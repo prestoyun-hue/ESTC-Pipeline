@@ -12,6 +12,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { UserRole } from '../types';
 import { ChangePasswordModal } from './ChangePasswordModal';
+import { UserManualModal } from './UserManualModal';
 import { 
   Briefcase, 
   LogOut, 
@@ -27,7 +28,8 @@ import {
   Database,
   Menu,
   X,
-  KeyRound
+  KeyRound,
+  HelpCircle
 } from 'lucide-react';
 
 export const Navbar: React.FC<{ activeTab: string; setActiveTab: (tab: string) => void }> = ({
@@ -37,6 +39,7 @@ export const Navbar: React.FC<{ activeTab: string; setActiveTab: (tab: string) =
   const { profile, role, signOut, isDemoMode, loginAsDemoUser } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [isManualOpen, setIsManualOpen] = useState(false);
 
   /**
    * 역할(Role) 배지 버블 색상 및 한글명 매핑
@@ -86,7 +89,6 @@ export const Navbar: React.FC<{ activeTab: string; setActiveTab: (tab: string) =
     { id: 'reports', label: '영업 현황', icon: BarChart3, roleRequired: null },
     { id: 'analytics', label: '팀 성과 분석', icon: TrendingUp, roleRequired: ['dept_manager', 'manager', 'admin'] },
     { id: 'roles', label: '역할(Role) 관리', icon: Settings, roleRequired: ['admin'] },
-    { id: 'sql-guide', label: 'Supabase SQL 가이드', icon: Database, roleRequired: ['admin'] },
   ];
 
   const visibleNavItems = navItems.filter(item => {
@@ -157,6 +159,15 @@ export const Navbar: React.FC<{ activeTab: string; setActiveTab: (tab: string) =
               </div>
             </div>
 
+            {/* 매뉴얼 열기 버튼 */}
+            <button
+              onClick={() => setIsManualOpen(true)}
+              title="사용 매뉴얼"
+              className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all cursor-pointer"
+            >
+              <HelpCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+            </button>
+
             {/* 비밀번호 변경 버튼 */}
             <button
               onClick={() => setIsPasswordModalOpen(true)}
@@ -216,6 +227,12 @@ export const Navbar: React.FC<{ activeTab: string; setActiveTab: (tab: string) =
         )}
 
       </div>
+
+      {/* 매뉴얼 모달 */}
+      <UserManualModal
+        isOpen={isManualOpen}
+        onClose={() => setIsManualOpen(false)}
+      />
 
       {/* 비밀번호 변경 모달 */}
       <ChangePasswordModal
