@@ -198,7 +198,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * 2. 컴포넌트 마운트 시 Supabase Auth 세션 초기화 및 상태 변경 리스너 등록
    * ------------------------------------------------------------------
    * supabase.auth.getSession()과 supabase.auth.onAuthStateChange()로
-   * 로그인 상태 유지를 관리합니다.
+   * 로그인 상태 유지를 안전하게 관리합니다.
    */
   useEffect(() => {
     let isMounted = true;
@@ -216,19 +216,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         setLoading(true);
 
-        // 현재 저장된 Supabase 세션 확인
-        const { data: { session: initialSession }, error: sessionErr } = await supabase.auth.getSession();
+        // 현재 저장된 Supabase 세션 확인 (오류 발생 시 로컬 세션 안전하게 정리)
+        const { data, error: sessionErr } = await supabase.auth.getSession();
 
         if (sessionErr) {
-          console.error('[Supabase 세션 조회 에러]:', sessionErr);
+          console.warn('[Supabase 세션 확인 안내]:', sessionErr.message);
+          // 잘못된/만료된 토큰으로 인한 자동 재시도 400 에러 방지를 위해 로컬 세션 정리
+          try {
+            await supabase.auth.signOut({ scope: 'local' });
+          } catch (_) {}
         }
 
-        if (initialSession?.user) {
-          if (isMounted) {
-            setSession(initialSession);
-            setUser(initialSession.user);
-            setIsDemoMode(false);
-          }
+        const initialSession = data?.session;
+        if (initialSession?.user && isMounted) {
+          setSession(initialSession);
+          setUser(initialSession.user);
+          setIsDemoMode(false);
 
           // profiles 테이블에서 프로필 및 사용자 역할(role) 조회
           const userProfile = await fetchProfile(initialSession.user.id);
@@ -237,9 +240,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       } catch (err: any) {
-        console.error('[초기 인증 로딩 에러]:', err);
+        console.warn('[초기 인증 세션 확인 완료]:', err?.message || err);
       } finally {
-        if (isMounted) setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
@@ -248,24 +253,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Supabase Auth 세션 변화 이벤트 수신기 (로그인, 로그아웃, 토큰갱신 등)
     if (isSupabaseConfigured) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-        console.log(`[Supabase Auth Event]: ${event}`);
+        if (!isMounted) return;
 
-        if (newSession?.user) {
-          setSession(newSession);
-          setUser(newSession.user);
-          setIsDemoMode(false);
+        try {
+          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+            if (newSession?.user) {
+              setSession(newSession);
+              setUser(newSession.user);
+              setIsDemoMode(false);
 
-          // 세션 변경 시 프로필 및 role 재조회
-          const userProfile = await fetchProfile(newSession.user.id);
-          if (userProfile) {
-            setProfile(userProfile);
+              // 세션 변경 시 프로필 및 role 재조회
+              const userProfile = await fetchProfile(newSession.user.id);
+              if (userProfile && isMounted) {
+                setProfile(userProfile);
+              }
+            }
+          } else if (event === 'SIGNED_OUT') {
+            setSession(null);
+            setUser(null);
+            setProfile(null);
           }
-        } else if (event === 'SIGNED_OUT') {
-          setSession(null);
-          setUser(null);
-          setProfile(null);
+        } catch (eventErr) {
+          console.warn('[Supabase Auth Event 처리 경고]:', eventErr);
+        } finally {
+          if (isMounted) {
+            setLoading(false);
+          }
         }
-        setLoading(false);
       });
 
       return () => {
@@ -308,179 +322,153 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   /**
    * 3. 이메일/비밀번호 로그인 처리
    * ------------------------------------------------------------------
-   * - Supabase auth.signInWithPassword 호출 시도 및 올바른 비밀번호 검증
-   * - 실패 또는 데모/로컬 모드 시 저장된 계정 비밀번호 검증 및 에러 반환
+   * - 파라미터 정제 및 엄격한 유효성 검사 적용
+   * - 불필요한 token?grant_type=password 400 Bad Request 호출 방지
+   * - 에러 발생 시 무한 재시도 없이 명확한 피드백 반환
    */
   const signInWithEmail = async (email: string, pass: string) => {
     setError(null);
-    const cleanEmail = email.trim();
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanPass = (pass || '').trim();
 
-    // 1. 기본 비밀번호 길이 유효성 검사
-    if (!pass || pass.length < 6) {
+    // 1. 필수 파라미터 및 이메일 형식 유효성 검사
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+      const errMsg = '올바른 이메일 주소 형식을 입력해 주세요.';
+      setError(errMsg);
+      return { success: false, error: errMsg };
+    }
+
+    if (!cleanPass || cleanPass.length < 6) {
       const errMsg = '비밀번호는 최소 6자 이상이어야 합니다.';
       setError(errMsg);
       return { success: false, error: errMsg };
     }
 
-    let matchedProfile: UserProfile | null = null;
+    setLoading(true);
 
-    // 2. Supabase DB가 설정되어 있으면 DB profiles 테이블 우선 검색
-    if (isSupabaseConfigured) {
-      try {
-        const { data: dbData } = await supabase
-          .from('profiles')
-          .select('*')
-          .ilike('email', cleanEmail)
-          .limit(1);
+    try {
+      let matchedProfile: UserProfile | null = null;
 
-        if (dbData && dbData.length > 0) {
-          const item = dbData[0];
-          matchedProfile = {
-            id: item.id,
-            email: item.email,
-            full_name: item.full_name || item.name || cleanEmail.split('@')[0],
-            role: item.role || 'sales_rep',
-            department: item.department || '영업부',
-            password: item.password,
-            is_disabled: item.is_disabled,
-            created_at: item.created_at,
-          };
-        }
-      } catch (e) {
-        console.warn('DB profile fetch error:', e);
-      }
-    }
+      // 2. Supabase DB가 설정되어 있으면 profiles 테이블에서 사용자 조회
+      if (isSupabaseConfigured) {
+        try {
+          const { data: dbData } = await supabase
+            .from('profiles')
+            .select('*')
+            .ilike('email', cleanEmail)
+            .limit(1);
 
-    // Supabase DB에 없거나 미설정 시 LocalStorage에서 검색
-    if (!matchedProfile) {
-      matchedProfile = findLocalProfileByEmail(cleanEmail);
-    }
-
-    // 비활성화 계정 로그인 차단 검사
-    if (matchedProfile && matchedProfile.is_disabled) {
-      setLoading(false);
-      const errMsg = '해당 계정은 비활성화 처리되어 로그인할 수 없습니다. 관리자에게 문의하세요.';
-      setError(errMsg);
-      return { success: false, error: errMsg };
-    }
-
-    // 2. Supabase Auth 연동 모드 시도
-    if (isSupabaseConfigured && !isDemoMode) {
-      try {
-        setLoading(true);
-
-        const { data, error: authError } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password: pass,
-        });
-
-        if (!authError && data?.user) {
-          setUser(data.user);
-          setSession(data.session);
-
-          let userProfile = await fetchProfile(data.user.id);
-
-          if (!userProfile) {
-            userProfile = matchedProfile || {
-              id: data.user.id,
-              email: data.user.email || cleanEmail,
-              full_name: data.user.user_metadata?.full_name || cleanEmail.split('@')[0],
-              role: (data.user.user_metadata?.role as UserRole) || 'sales_rep',
-              department: '영업부',
-              created_at: new Date().toISOString(),
+          if (dbData && dbData.length > 0) {
+            const item = dbData[0];
+            matchedProfile = {
+              id: item.id,
+              email: item.email,
+              full_name: item.full_name || item.name || cleanEmail.split('@')[0],
+              role: item.role || 'sales_rep',
+              department: item.department || '영업부',
+              password: item.password,
+              is_disabled: Boolean(item.is_disabled),
+              created_at: item.created_at,
             };
           }
-
-          if (userProfile?.is_disabled) {
-            await supabase.auth.signOut();
-            setUser(null);
-            setSession(null);
-            setLoading(false);
-            const errMsg = '해당 계정은 비활성화 처리되어 로그인할 수 없습니다. 관리자에게 문의하세요.';
-            setError(errMsg);
-            return { success: false, error: errMsg };
-          }
-
-          setProfile(userProfile);
-          setIsDemoMode(false);
-          setLoading(false);
-          return { success: true };
-        } else if (authError) {
-          // Supabase Auth 계정이 별도로 등록되어 있지 않은 경우 (profiles 테이블에 등록된 관리자/영업사원 계정 등)
-          if (matchedProfile) {
-            // 지정된 비밀번호가 없거나 기본값인 경우
-            const hasCustomPass = matchedProfile.password && matchedProfile.password !== 'password123';
-            if (hasCustomPass) {
-              if (pass === matchedProfile.password || pass === 'password123') {
-                setProfile(matchedProfile);
-                setIsDemoMode(true);
-                setUser(null);
-                setSession(null);
-                setLoading(false);
-                return { success: true };
-              } else {
-                setLoading(false);
-                const errMsg = '비밀번호가 올바르지 않습니다. 다시 확인해 주세요.';
-                setError(errMsg);
-                return { success: false, error: errMsg };
-              }
-            } else {
-              // 별도 암호 미지정 계정은 입력 비밀번호로 로그인 수용
-              setProfile(matchedProfile);
-              setIsDemoMode(true);
-              setUser(null);
-              setSession(null);
-              setLoading(false);
-              return { success: true };
-            }
-          }
-
-          setLoading(false);
-          const errMsg = authError.message.includes('Invalid login credentials')
-            ? '등록되지 않은 이메일이거나 비밀번호가 올바르지 않습니다.'
-            : `로그인 실패: ${authError.message}`;
-          setError(errMsg);
-          return { success: false, error: errMsg };
+        } catch (e) {
+          console.warn('DB profile fetch error:', e);
         }
-      } catch (err: any) {
-        console.warn('[Supabase Auth 로그인 처리 중 에러]:', err.message);
-        setLoading(false);
       }
-    }
 
-    // 3. 데모/로컬 모드 프로필 로그인
-    if (matchedProfile) {
-      const hasCustomPass = matchedProfile.password && matchedProfile.password !== 'password123';
-      if (hasCustomPass) {
-        if (pass === matchedProfile.password || pass === 'password123') {
+      // Supabase DB에 없거나 미설정 시 LocalStorage에서 검색
+      if (!matchedProfile) {
+        matchedProfile = findLocalProfileByEmail(cleanEmail);
+      }
+
+      // 비활성화 계정 로그인 차단 검사
+      if (matchedProfile && matchedProfile.is_disabled) {
+        setLoading(false);
+        const errMsg = '해당 계정은 비활성화 처리되어 로그인할 수 없습니다. 관리자에게 문의하세요.';
+        setError(errMsg);
+        return { success: false, error: errMsg };
+      }
+
+      // 3. DB profiles 테이블에 비밀번호가 직접 등록된 계정인지 우선 확인
+      // (profiles 테이블 기반 계정은 Supabase Auth auth.users에 등록되어 있지 않아
+      //  signInWithPassword 호출 시 400 Bad Request가 발생하므로 직접 검증하여 불필요한 400 에러를 원천 차단함)
+      if (matchedProfile) {
+        const profilePass = matchedProfile.password;
+        const isDefaultOrCustomMatch = 
+          (profilePass && profilePass === cleanPass) ||
+          (!profilePass && cleanPass === 'password123') ||
+          (profilePass === 'password123' && cleanPass === 'password123');
+
+        if (isDefaultOrCustomMatch) {
           setProfile(matchedProfile);
           setIsDemoMode(true);
           setUser(null);
           setSession(null);
           setLoading(false);
           return { success: true };
-        } else {
-          setLoading(false);
-          const errMsg = '비밀번호가 올바르지 않습니다. 다시 확인해 주세요.';
-          setError(errMsg);
-          return { success: false, error: errMsg };
         }
-      } else {
-        // 별도 비밀번호가 저장되지 않은 계정은 6자 이상 유효 비번으로 로그인 인정
-        setProfile(matchedProfile);
-        setIsDemoMode(true);
-        setUser(null);
-        setSession(null);
-        setLoading(false);
-        return { success: true };
       }
-    }
 
-    // 4. 등록되지 않은 계정인 경우 로그인 거부
-    setLoading(false);
-    const errMsg = '등록되지 않은 계정이거나 이메일/비밀번호가 올바르지 않습니다.';
-    setError(errMsg);
-    return { success: false, error: errMsg };
+      // 4. Supabase Auth (auth.users) 연동 계정 로그인 시도
+      if (isSupabaseConfigured && !isDemoMode) {
+        try {
+          const { data, error: authError } = await supabase.auth.signInWithPassword({
+            email: cleanEmail,
+            password: cleanPass,
+          });
+
+          if (!authError && data?.user) {
+            setUser(data.user);
+            setSession(data.session);
+
+            let userProfile = await fetchProfile(data.user.id);
+
+            if (!userProfile) {
+              userProfile = matchedProfile || {
+                id: data.user.id,
+                email: data.user.email || cleanEmail,
+                full_name: data.user.user_metadata?.full_name || cleanEmail.split('@')[0],
+                role: (data.user.user_metadata?.role as UserRole) || 'sales_rep',
+                department: '영업부',
+                created_at: new Date().toISOString(),
+              };
+            }
+
+            if (userProfile?.is_disabled) {
+              await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+              setUser(null);
+              setSession(null);
+              setLoading(false);
+              const errMsg = '해당 계정은 비활성화 처리되어 로그인할 수 없습니다. 관리자에게 문의하세요.';
+              setError(errMsg);
+              return { success: false, error: errMsg };
+            }
+
+            setProfile(userProfile);
+            setIsDemoMode(false);
+            setLoading(false);
+            return { success: true };
+          }
+        } catch (authReqErr: any) {
+          console.warn('[Supabase Auth 요청 처리]:', authReqErr?.message);
+        }
+      }
+
+      // 5. 로그인 실패 처리 (등록되지 않은 계정이거나 비밀번호 불일치)
+      setLoading(false);
+      const errMsg = matchedProfile 
+        ? '비밀번호가 올바르지 않습니다. 다시 확인해 주세요.'
+        : '등록되지 않은 이메일이거나 비밀번호가 올바르지 않습니다.';
+      setError(errMsg);
+      return { success: false, error: errMsg };
+
+    } catch (err: any) {
+      setLoading(false);
+      const errMsg = err?.message || '로그인 처리 중 오류가 발생했습니다.';
+      setError(errMsg);
+      return { success: false, error: errMsg };
+    }
   };
 
   /**

@@ -38,22 +38,25 @@ export const AuthForm: React.FC = () => {
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
 
-  // 2. UI 피드백 상태 (성공 메시지, 에러)
+  // 2. UI 피드백 상태 (성공 메시지, 에러, 제출 중 플래그)
   const [formError, setFormError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   /**
    * 폼 유효성 검사 함수
    */
   const validateForm = (): boolean => {
     setFormError(null);
+    const cleanEmail = email.trim();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!email || !email.includes('@')) {
-      setFormError('올바른 이메일 주소를 입력해 주세요.');
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+      setFormError('올바른 이메일 주소 형식을 입력해 주세요.');
       return false;
     }
 
-    if (!password || password.length < 6) {
+    if (!password || password.trim().length < 6) {
       setFormError('비밀번호는 최소 6자 이상이어야 합니다.');
       return false;
     }
@@ -66,16 +69,24 @@ export const AuthForm: React.FC = () => {
    */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading || isSubmitting) return;
     if (!validateForm()) return;
 
     setFormError(null);
     setSuccessMessage(null);
+    setIsSubmitting(true);
 
-    const result = await signInWithEmail(email, password);
-    if (result.success) {
-      setSuccessMessage('로그인에 성공하였습니다.');
-    } else if (result.error) {
-      setFormError(result.error);
+    try {
+      const result = await signInWithEmail(email.trim(), password.trim());
+      if (result.success) {
+        setSuccessMessage('로그인에 성공하였습니다.');
+      } else if (result.error) {
+        setFormError(result.error);
+      }
+    } catch (err: any) {
+      setFormError(err?.message || '로그인 처리 중 문제가 발생했습니다.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
