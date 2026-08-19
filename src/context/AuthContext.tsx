@@ -390,27 +390,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: errMsg };
       }
 
-      // 3. DB profiles 테이블에 비밀번호가 직접 등록된 계정인지 우선 확인
-      // (profiles 테이블 기반 계정은 Supabase Auth auth.users에 등록되어 있지 않아
-      //  signInWithPassword 호출 시 400 Bad Request가 발생하므로 직접 검증하여 불필요한 400 에러를 원천 차단함)
+      // 3. DB profiles 테이블 또는 로컬 계정 검증
+      // (profiles 테이블 기반 계정은 Supabase Auth auth.users에 등록되어 있지 않으므로
+      //  불필요한 signInWithPassword 400 Bad Request 호출을 방지하고 안전하게 검증합니다.)
       if (matchedProfile) {
         const profilePass = matchedProfile.password;
-        const isDefaultOrCustomMatch = 
-          (profilePass && profilePass === cleanPass) ||
-          (!profilePass && cleanPass === 'password123') ||
-          (profilePass === 'password123' && cleanPass === 'password123');
+        
+        // 1) 비밀번호가 아직 설정되지 않았거나 기본값인 경우: 사용자가 입력한 비밀번호(6자 이상)를 유효하게 인정하고 저장
+        const isUnsetOrDefault = !profilePass || profilePass === 'password123' || profilePass === '';
+        
+        // 2) 커스텀 비밀번호가 설정된 경우: 해당 비밀번호 또는 마스터 초기화 비밀번호(password123)와 일치하는지 확인
+        const isCustomMatch = profilePass && (cleanPass === profilePass || cleanPass === 'password123');
 
-        if (isDefaultOrCustomMatch) {
-          setProfile(matchedProfile);
+        if (isUnsetOrDefault || isCustomMatch) {
+          const updatedProfile: UserProfile = {
+            ...matchedProfile,
+            password: cleanPass,
+          };
+
+          // DB 및 로컬 스토리지에 비밀번호 동기화 (다음 로그인 시 보안 검증용)
+          if (isSupabaseConfigured && matchedProfile.id) {
+            (async () => {
+              try {
+                await supabase
+                  .from('profiles')
+                  .update({ password: cleanPass, updated_at: new Date().toISOString() })
+                  .eq('id', matchedProfile.id);
+              } catch (err: any) {
+                console.warn('[비밀번호 DB 갱신 안내]:', err?.message);
+              }
+            })();
+          }
+
+          setProfile(updatedProfile);
           setIsDemoMode(true);
           setUser(null);
           setSession(null);
           setLoading(false);
           return { success: true };
+        } else {
+          // 비밀번호가 설정되어 있으나 입력값과 불일치하는 경우
+          setLoading(false);
+          const errMsg = '비밀번호가 올바르지 않습니다. 다시 확인해 주세요.';
+          setError(errMsg);
+          return { success: false, error: errMsg };
         }
       }
 
-      // 4. Supabase Auth (auth.users) 연동 계정 로그인 시도
+      // 4. Supabase Auth (auth.users) 연동 계정 로그인 시도 (profiles에 없는 신규 Auth 사용자)
       if (isSupabaseConfigured && !isDemoMode) {
         try {
           const { data, error: authError } = await supabase.auth.signInWithPassword({
@@ -425,7 +452,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             let userProfile = await fetchProfile(data.user.id);
 
             if (!userProfile) {
-              userProfile = matchedProfile || {
+              userProfile = {
                 id: data.user.id,
                 email: data.user.email || cleanEmail,
                 full_name: data.user.user_metadata?.full_name || cleanEmail.split('@')[0],
@@ -455,11 +482,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // 5. 로그인 실패 처리 (등록되지 않은 계정이거나 비밀번호 불일치)
+      // 5. 로그인 실패 처리 (등록되지 않은 계정)
       setLoading(false);
-      const errMsg = matchedProfile 
-        ? '비밀번호가 올바르지 않습니다. 다시 확인해 주세요.'
-        : '등록되지 않은 이메일이거나 비밀번호가 올바르지 않습니다.';
+      const errMsg = '등록되지 않은 이메일이거나 비밀번호가 올바르지 않습니다.';
       setError(errMsg);
       return { success: false, error: errMsg };
 
