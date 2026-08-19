@@ -99,6 +99,42 @@ const MOCK_PROFILES: Record<UserRole, UserProfile> = {
   viewer: DEMO_PROFILES[4],
 };
 
+// 활성 로그인 세션 영속화 키
+const ACTIVE_SESSION_STORAGE_KEY = 'crm_active_profile_session_v1';
+
+/**
+ * 로컬 스토리지 활성 세션 조회 헬퍼
+ */
+const getStoredActiveSession = (): UserProfile | null => {
+  try {
+    const saved = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+    if (saved) {
+      const parsed: UserProfile = JSON.parse(saved);
+      if (parsed && parsed.email) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn('[활성 세션 로드 경고]:', e);
+  }
+  return null;
+};
+
+/**
+ * 로컬 스토리지 활성 세션 저장/삭제 헬퍼
+ */
+const setStoredActiveSession = (profileToSave: UserProfile | null) => {
+  try {
+    if (profileToSave) {
+      localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(profileToSave));
+    } else {
+      localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+    }
+  } catch (e) {
+    console.warn('[활성 세션 저장 경고]:', e);
+  }
+};
+
 // Auth Context 인터페이스
 interface AuthContextType {
   user: User | null;                  // Supabase 인증 사용자 정보
@@ -134,7 +170,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(() => getStoredActiveSession());
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -195,49 +231,92 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   /**
-   * 2. 컴포넌트 마운트 시 Supabase Auth 세션 초기화 및 상태 변경 리스너 등록
+   * 2. 컴포넌트 마운트 시 Supabase Auth 및 로컬 영속 세션 초기화
    * ------------------------------------------------------------------
-   * supabase.auth.getSession()과 supabase.auth.onAuthStateChange()로
-   * 로그인 상태 유지를 안전하게 관리합니다.
+   * - 페이지 새로고침 또는 브라우저 재진입 시에도 로그인 세션을 안정적으로 유지합니다.
+   * - 백그라운드 토큰 만료 이벤트로 인해 프로필이 강제 로그아웃되지 않도록 보호합니다.
    */
   useEffect(() => {
     let isMounted = true;
 
     const initializeAuth = async () => {
-      // Supabase 설정이 되어있지 않은 경우 데모 모드로 초기화
-      if (!isSupabaseConfigured) {
-        if (isMounted) {
-          setProfile(MOCK_PROFILES.sales_rep);
-          setLoading(false);
-        }
-        return;
-      }
-
       try {
         setLoading(true);
 
-        // 현재 저장된 Supabase 세션 확인 (오류 발생 시 로컬 세션 안전하게 정리)
-        const { data, error: sessionErr } = await supabase.auth.getSession();
+        // 1) 로컬 스토리지에 저장된 활성 프로필 세션 확인
+        const savedSession = getStoredActiveSession();
 
-        if (sessionErr) {
-          console.warn('[Supabase 세션 확인 안내]:', sessionErr.message);
-          // 잘못된/만료된 토큰으로 인한 자동 재시도 400 에러 방지를 위해 로컬 세션 정리
+        // 2) Supabase Auth 세션 확인 (Supabase가 설정된 경우)
+        if (isSupabaseConfigured) {
           try {
-            await supabase.auth.signOut({ scope: 'local' });
-          } catch (_) {}
+            const { data } = await supabase.auth.getSession();
+            const initialSession = data?.session;
+
+            if (initialSession?.user && isMounted) {
+              setSession(initialSession);
+              setUser(initialSession.user);
+              setIsDemoMode(false);
+
+              // profiles 테이블에서 최신 프로필 정보 동기화
+              const userProfile = await fetchProfile(initialSession.user.id);
+              if (isMounted && userProfile) {
+                if (userProfile.is_disabled) {
+                  await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+                  setStoredActiveSession(null);
+                  setProfile(null);
+                  setLoading(false);
+                  return;
+                }
+                setProfile(userProfile);
+                setStoredActiveSession(userProfile);
+                setLoading(false);
+                return;
+              }
+            }
+          } catch (e) {
+            console.warn('[Supabase Auth 세션 확인 안내]:', e);
+          }
         }
 
-        const initialSession = data?.session;
-        if (initialSession?.user && isMounted) {
-          setSession(initialSession);
-          setUser(initialSession.user);
-          setIsDemoMode(false);
+        // 3) Supabase Auth 세션이 없더라도 로컬에 저장된 활성 프로필이 있는 경우 복원
+        if (savedSession && isMounted) {
+          let isUserDisabled = Boolean(savedSession.is_disabled);
 
-          // profiles 테이블에서 프로필 및 사용자 역할(role) 조회
-          const userProfile = await fetchProfile(initialSession.user.id);
-          if (isMounted && userProfile) {
-            setProfile(userProfile);
+          // Supabase DB가 연결되어 있다면 비활성화 여부 및 최신 역할/부서 정보 갱신
+          if (isSupabaseConfigured && savedSession.email) {
+            try {
+              const { data: dbProfiles } = await supabase
+                .from('profiles')
+                .select('*')
+                .ilike('email', savedSession.email.trim())
+                .limit(1);
+
+              if (dbProfiles && dbProfiles.length > 0) {
+                const latest = dbProfiles[0];
+                if (latest.is_disabled) {
+                  isUserDisabled = true;
+                } else {
+                  savedSession.role = latest.role || savedSession.role;
+                  savedSession.department = latest.department || savedSession.department;
+                  savedSession.full_name = latest.full_name || latest.name || savedSession.full_name;
+                  savedSession.id = latest.id || savedSession.id;
+                }
+              }
+            } catch (_) {}
           }
+
+          if (isUserDisabled) {
+            setStoredActiveSession(null);
+            setProfile(null);
+          } else {
+            setProfile(savedSession);
+            setIsDemoMode(true);
+            setStoredActiveSession(savedSession);
+          }
+        } else if (!isSupabaseConfigured && isMounted) {
+          // Supabase 미설정 환경 기본 데모 계정
+          setProfile(MOCK_PROFILES.sales_rep);
+          setStoredActiveSession(MOCK_PROFILES.sales_rep);
         }
       } catch (err: any) {
         console.warn('[초기 인증 세션 확인 완료]:', err?.message || err);
@@ -266,12 +345,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               const userProfile = await fetchProfile(newSession.user.id);
               if (userProfile && isMounted) {
                 setProfile(userProfile);
+                setStoredActiveSession(userProfile);
               }
             }
           } else if (event === 'SIGNED_OUT') {
-            setSession(null);
-            setUser(null);
-            setProfile(null);
+            // [중요]: Supabase Auth SDK 내부의 토큰 갱신 타이머 만료로 인한 자동 로그아웃 방어
+            // 로컬에 활성 프로필 세션(savedSession)이 존재하는 경우, Supabase Auth의 SIGNED_OUT 이벤트로
+            // 사용자 프로필을 강제 해제(setProfile(null))하지 않고 프로필 세션을 지속 유지합니다.
+            const currentActiveSession = getStoredActiveSession();
+            if (!currentActiveSession) {
+              setSession(null);
+              setUser(null);
+              setProfile(null);
+            } else {
+              setSession(null);
+              setUser(null);
+            }
           }
         } catch (eventErr) {
           console.warn('[Supabase Auth Event 처리 경고]:', eventErr);
@@ -423,6 +512,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           setProfile(updatedProfile);
+          setStoredActiveSession(updatedProfile);
           setIsDemoMode(true);
           setUser(null);
           setSession(null);
@@ -464,6 +554,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             if (userProfile?.is_disabled) {
               await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+              setStoredActiveSession(null);
               setUser(null);
               setSession(null);
               setLoading(false);
@@ -473,6 +564,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
 
             setProfile(userProfile);
+            setStoredActiveSession(userProfile);
             setIsDemoMode(false);
             setLoading(false);
             return { success: true };
@@ -521,6 +613,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         created_at: new Date().toISOString(),
       };
       setProfile(newDemoProfile);
+      setStoredActiveSession(newDemoProfile);
       return { success: true };
     }
 
@@ -567,6 +660,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         setProfile(newProfile);
+        setStoredActiveSession(newProfile);
         setUser(data.user);
         setSession(data.session);
 
@@ -592,12 +686,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     try {
       setLoading(true);
-      if (isSupabaseConfigured && !isDemoMode) {
-        await supabase.auth.signOut();
+      setStoredActiveSession(null);
+      if (isSupabaseConfigured) {
+        await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
       }
     } catch (err) {
       console.error('[로그아웃 에러]:', err);
     } finally {
+      setStoredActiveSession(null);
       setUser(null);
       setSession(null);
       setProfile(null);
@@ -627,6 +723,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       setProfile(updated);
+      setStoredActiveSession(updated);
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message };
@@ -640,6 +737,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const found = DEMO_PROFILES.find(p => p.id === demoId) || DEMO_PROFILES[0];
     setIsDemoMode(true);
     setProfile(found);
+    setStoredActiveSession(found);
     setUser(null);
     setSession(null);
     setError(null);
@@ -651,7 +749,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const loginAsDemoRole = (targetRole: UserRole) => {
     setIsDemoMode(true);
-    setProfile(MOCK_PROFILES[targetRole]);
+    const p = MOCK_PROFILES[targetRole];
+    setProfile(p);
+    setStoredActiveSession(p);
     setUser(null);
     setSession(null);
     setError(null);
@@ -665,10 +765,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsDemoMode(enable);
     if (enable) {
       setProfile(MOCK_PROFILES.sales_rep);
+      setStoredActiveSession(MOCK_PROFILES.sales_rep);
     } else {
+      setStoredActiveSession(null);
       setProfile(null);
       if (user) {
-        fetchProfile(user.id).then((p) => p && setProfile(p));
+        fetchProfile(user.id).then((p) => {
+          if (p) {
+            setProfile(p);
+            setStoredActiveSession(p);
+          }
+        });
       }
     }
   };
