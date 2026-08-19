@@ -559,6 +559,20 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
     }
   };
 
+  // 안전한 폼 닫기 (작성 중인 메모나 수정사항이 있을 때 실수로 닫히는 현상 방지)
+  const handleSafeClose = () => {
+    const isNotesChanged = notes.trim() && (!dealToEdit || notes.trim() !== (dealToEdit.notes || '').trim());
+    const isCompanyEntered = !dealToEdit && company.trim().length > 0;
+
+    if (!isViewer && (isNotesChanged || isCompanyEntered)) {
+      if (window.confirm('작성 중인 영업 진행 내용 또는 입력 데이터가 있습니다. 폼을 닫으시겠습니까?\n(저장하지 않고 닫으면 입력 내용이 사라집니다)')) {
+        onClose();
+      }
+    } else {
+      onClose();
+    }
+  };
+
   // 삭제 처리
   const handleDelete = async () => {
     if (!dealToEdit || !onDeleteSuccess) return;
@@ -740,7 +754,7 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
           </div>
 
           <button
-            onClick={onClose}
+            onClick={handleSafeClose}
             className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-all cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -1322,7 +1336,7 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
           <div className="flex items-center space-x-2 sm:space-x-3">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleSafeClose}
               className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer"
             >
               {isViewer ? '닫기' : '취소'}
