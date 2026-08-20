@@ -68,11 +68,13 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
   currentUserId = '',
   currentUserName = ''
 }) => {
-  const { role } = useAuth();
+  const { role, profile } = useAuth();
   const isAdmin = role === 'admin';
   const isSalesRep = role === 'sales_rep';
   const isViewer = role === 'viewer';
-  const isManagerOrAdmin = role === 'manager' || role === 'admin';
+  const isManager = role === 'dept_manager' || role === 'manager';
+  const isManagerOrAdmin = isManager || isAdmin;
+  const userDept = (profile?.department || '').trim();
 
   // 모드 판별
   const isEditMode = !!dealToEdit;
@@ -1009,6 +1011,17 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
                     // 1. 계정 관리(profiles) 리스트 중 시스템 관리자(admin) 제외
                     profiles.forEach(p => {
                       if (p.role === 'admin') return; // 시스템 관리자는 제외
+                      
+                      // [부서 관리자 / 매니저 필터링]
+                      // 매니저(dept_manager 또는 manager)인 경우 동일한 부서 소속 직원만 노출
+                      if (isManager && userDept) {
+                        const pDept = (p.department || '').trim();
+                        // 본인 계정이 아니면서 부서가 다르면 제외
+                        if (pDept && pDept !== userDept && p.id !== currentUserId) {
+                          return;
+                        }
+                      }
+
                       const cleanName = (p.full_name || p.name || '').replace(/\s*\(.*?\)/g, '').trim();
                       if (cleanName) {
                         repMap.set(cleanName, {
@@ -1027,6 +1040,7 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
                         repMap.set(cleanCurrent, {
                           id: currentUserId || 'current-user-id',
                           name: cleanCurrent,
+                          dept: userDept,
                           role: role
                         });
                       }
@@ -1040,7 +1054,8 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
                         if (!matchedP || matchedP.role !== 'admin') {
                           repMap.set(cleanExisting, {
                             id: salesRepId || 'existing-rep-id',
-                            name: cleanExisting
+                            name: cleanExisting,
+                            dept: matchedP?.department
                           });
                         }
                       }
@@ -1052,7 +1067,7 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
                     return reps.map((rep) => {
                       const isMe = rep.name === myCleanName;
                       const deptStr = rep.dept ? ` (${rep.dept})` : '';
-                      const roleStr = rep.role === 'manager' ? ' [매니저]' : '';
+                      const roleStr = rep.role === 'manager' || rep.role === 'dept_manager' ? ' [매니저]' : '';
                       return (
                         <option key={rep.name} value={rep.name}>
                           {rep.name}{deptStr}{roleStr}{isMe ? ' - (현재 로그인)' : ''}
@@ -1066,9 +1081,14 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
                     영업담당 권한은 본인명의 딜만 생성/수정 가능합니다.
                   </p>
                 )}
-                {isManagerOrAdmin && (
+                {isManager && (
                   <p className="mt-1 text-[11px] text-blue-600 font-medium">
-                    매니저/관리자는 다른 영업담당자를 지정해 딜을 등록/수정할 수 있으며, 이 때 로그가 저장됩니다.
+                    매니저는 동일 부서({userDept || '소속 부서'}) 담당 직원만 지정할 수 있습니다.
+                  </p>
+                )}
+                {isAdmin && (
+                  <p className="mt-1 text-[11px] text-blue-600 font-medium">
+                    시스템 관리자는 전 부서의 영업담당자를 자유롭게 지정할 수 있습니다.
                   </p>
                 )}
               </div>
