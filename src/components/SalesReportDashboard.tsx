@@ -56,14 +56,16 @@ import {
   Minus
 } from 'lucide-react';
 
-// 파이프라인 단계 정의
+// 파이프라인 단계 정의 (실제 파이프라인 8개 세부 단계와 100% 일치)
 const PIPELINE_STAGES: { id: PipelineStage; label: string; color: string }[] = [
-  { id: 'lead', label: '10% 신규 기회', color: '#3b82f6' },        // Blue
-  { id: 'proposal', label: '30% 제안 진행', color: '#6366f1' },    // Indigo
-  { id: 'negotiation', label: '50% 가격/스펙 협상', color: '#8b5cf6' }, // Purple
-  { id: 'order', label: '80% 최종 계약 대기', color: '#ec4899' },  // Pink
-  { id: 'closed_won', label: '100% 수주 완료', color: '#10b981' }, // Emerald
-  { id: 'closed_lost', label: '0% 드랍/실패', color: '#f43f5e' }    // Rose
+  { id: 'lead', label: '1. 신규 리드 (10%)', color: '#3b82f6' },        // Blue
+  { id: 'contacted', label: '2. 미팅/접촉 (20%)', color: '#0ea5e9' },    // Sky
+  { id: 'proposal', label: '3. 제안 (30%)', color: '#6366f1' },         // Indigo
+  { id: 'poc', label: '4. PoC (50%)', color: '#8b5cf6' },              // Violet
+  { id: 'negotiation', label: '5. 견적/협상 (70%)', color: '#a855f7' },  // Purple
+  { id: 'order', label: '6. 주문대기 (90%)', color: '#ec4899' },        // Pink
+  { id: 'closed_won', label: '7. 수주 (100%)', color: '#10b981' },      // Emerald
+  { id: 'closed_lost', label: '8. 실패/드랍 (0%)', color: '#f43f5e' }    // Rose
 ];
 
 // 차트 보조 색상
@@ -1158,11 +1160,18 @@ export const SalesReportDashboard: React.FC = () => {
             </div>
           </div>
 
-          <div className="w-full h-80 pt-2">
+          <div className="w-full h-84 pt-2">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stageDistributionData} margin={{ top: 10, right: 10, left: 10, bottom: 25 }}>
+              <BarChart data={stageDistributionData} margin={{ top: 10, right: 15, left: 10, bottom: 35 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="stageLabel" tick={{ fontSize: 10, fill: '#64748b' }} interval={0} />
+                <XAxis 
+                  dataKey="stageLabel" 
+                  tick={{ fontSize: 10, fill: '#475569', fontWeight: 600 }} 
+                  interval={0} 
+                  angle={-15}
+                  textAnchor="end"
+                  height={45}
+                />
                 <YAxis yAxisId="left" orientation="left" stroke="#3b82f6" tick={{ fontSize: 11 }} />
                 <YAxis yAxisId="right" orientation="right" stroke="#10b981" tick={{ fontSize: 11 }} />
                 <Tooltip
@@ -1172,7 +1181,7 @@ export const SalesReportDashboard: React.FC = () => {
                   ]}
                   contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '12px' }}
                 />
-                <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+                <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '6px' }} />
                 <Bar yAxisId="left" dataKey="count" name="딜 건수 (건)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                 <Bar yAxisId="right" dataKey="amountInTenThousand" name="예상 금액 (만원)" fill="#10b981" radius={[4, 4, 0, 0]} />
               </BarChart>
