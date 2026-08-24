@@ -86,7 +86,7 @@ const generateValidUUID = (): string => {
 const INITIAL_PROFILES: UserProfile[] = [
   {
     id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
-    email: 'prestoyun@gmail.com',
+    email: 'prestoyun@estc.co.kr',
     full_name: '윤영남',
     role: 'admin',
     department: '경영지원본부',

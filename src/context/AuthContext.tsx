@@ -18,15 +18,6 @@ import { UserProfile, UserRole } from '../types';
 // 미리 정의된 테스트/데모 사용자 계정 목록 (Supabase 설정 전 체험용)
 export const DEMO_PROFILES: UserProfile[] = [
   {
-    id: 'e5270c53-b328-4f81-8b74-123456789abc',
-    email: 'prestoyun@gmail.com',
-    full_name: '윤영남',
-    role: 'admin',
-    department: '영업 본부',
-    avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-    created_at: new Date().toISOString(),
-  },
-  {
     id: 'f6381d64-c439-4f92-8c85-234567890bcd',
     email: 'prestoyun@estc.co.kr',
     full_name: '윤영남',
