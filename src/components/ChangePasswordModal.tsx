@@ -66,33 +66,43 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen
         await updateProfile({ password: newPassword });
 
         // Supabase DB profiles 테이블 업데이트
-        if (isSupabaseConfigured) {
+        if (isSupabaseConfigured && profile.email) {
           try {
-            await supabase
+            const cleanEmail = profile.email.trim();
+            // 1) id 또는 email로 Supabase profiles 테이블의 password 컬럼 동기화
+            const { error: dbUpdateErr } = await supabase
               .from('profiles')
               .update({ password: newPassword, updated_at: new Date().toISOString() })
-              .eq('id', profile.id);
+              .or(`id.eq.${profile.id},email.ilike.${cleanEmail}`);
+
+            if (dbUpdateErr) {
+              // 2) or 필터 실패 시 email로 단독 재시도
+              await supabase
+                .from('profiles')
+                .update({ password: newPassword, updated_at: new Date().toISOString() })
+                .ilike('email', cleanEmail);
+            }
           } catch (e) {
             console.warn('Supabase profile password update warning:', e);
           }
-        } else {
-          // LocalStorage fallback (Supabase 미설정 시)
-          try {
-            const saved = localStorage.getItem('admin_user_profiles');
-            if (saved) {
-              const parsed = JSON.parse(saved);
-              if (Array.isArray(parsed)) {
-                const updatedList = parsed.map((item: any) => {
-                  if (item.id === profile.id || (item.email && profile.email && item.email.toLowerCase() === profile.email.toLowerCase())) {
-                    return { ...item, password: newPassword };
-                  }
-                  return item;
-                });
-                localStorage.setItem('admin_user_profiles', JSON.stringify(updatedList));
-              }
-            }
-          } catch (e) {}
         }
+
+        // LocalStorage 동기화
+        try {
+          const saved = localStorage.getItem('admin_user_profiles');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) {
+              const updatedList = parsed.map((item: any) => {
+                if (item.id === profile.id || (item.email && profile.email && item.email.toLowerCase() === profile.email.toLowerCase())) {
+                  return { ...item, password: newPassword };
+                }
+                return item;
+              });
+              localStorage.setItem('admin_user_profiles', JSON.stringify(updatedList));
+            }
+          }
+        } catch (e) {}
       }
 
       setSuccessMessage('비밀번호가 성공적으로 변경되었습니다. 다음 로그인 시 새 비밀번호를 사용해 주세요.');

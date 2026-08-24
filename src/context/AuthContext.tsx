@@ -498,13 +498,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
 
           // DB 및 로컬 스토리지에 비밀번호 동기화 (다음 로그인 시 보안 검증용)
-          if (isSupabaseConfigured && matchedProfile.id) {
+          if (isSupabaseConfigured && matchedProfile.email) {
             (async () => {
               try {
-                await supabase
+                const targetEmail = matchedProfile.email.trim();
+                const { error: syncErr } = await supabase
                   .from('profiles')
                   .update({ password: cleanPass, updated_at: new Date().toISOString() })
-                  .eq('id', matchedProfile.id);
+                  .or(`id.eq.${matchedProfile.id},email.ilike.${targetEmail}`);
+
+                if (syncErr) {
+                  await supabase
+                    .from('profiles')
+                    .update({ password: cleanPass, updated_at: new Date().toISOString() })
+                    .ilike('email', targetEmail);
+                }
               } catch (err: any) {
                 console.warn('[비밀번호 DB 갱신 안내]:', err?.message);
               }
@@ -711,14 +719,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const updated = { ...profile, ...updates, updated_at: new Date().toISOString() };
       
-      if (isSupabaseConfigured && !isDemoMode && user) {
-        const { error: updateErr } = await supabase
-          .from('profiles')
-          .update(updates)
-          .eq('id', user.id);
-
-        if (updateErr) {
-          return { success: false, error: updateErr.message };
+      if (isSupabaseConfigured && profile.email) {
+        try {
+          const targetEmail = profile.email.trim();
+          await supabase
+            .from('profiles')
+            .update(updates)
+            .or(`id.eq.${profile.id},email.ilike.${targetEmail}`);
+        } catch (e) {
+          console.warn('updateProfile DB sync notice:', e);
         }
       }
 
