@@ -369,7 +369,7 @@ export const fetchStoredDeals = async (forceRefresh: boolean = false): Promise<D
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (!error && data && data.length > 0) {
+      if (!error && Array.isArray(data)) {
         const cleanData = deduplicateDeals(data as Deal[]);
         memoryDealsCache = cleanData;
         lastFetchTimestamp = Date.now();
