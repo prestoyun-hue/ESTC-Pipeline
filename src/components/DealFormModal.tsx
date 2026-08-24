@@ -821,20 +821,49 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
                 />
               </div>
 
-              {/* 예상 금액 (단위 $ 삭제) */}
+              {/* 예상 금액 (원화 콤마 형식: 50,000,000) */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  예상 금액 <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                  placeholder="50000000"
-                  step={1000000}
-                  className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-                  required
-                />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    예상 금액 <span className="text-rose-500">*</span>
+                  </label>
+                  {amount !== '' && Number(amount) > 0 && (
+                    <span className="text-[11px] font-bold text-emerald-600">
+                      {Number(amount) >= 100000000 
+                        ? `${(Number(amount) / 100000000).toLocaleString('ko-KR', { maximumFractionDigits: 2 })}억원` 
+                        : Number(amount) >= 10000 
+                        ? `${(Number(amount) / 10000).toLocaleString('ko-KR', { maximumFractionDigits: 1 })}만원` 
+                        : `${Number(amount).toLocaleString('ko-KR')}원`}
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
+                    ₩
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={amount !== '' ? Number(amount).toLocaleString('ko-KR') : ''}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/[^0-9]/g, '');
+                      if (raw === '') {
+                        setAmount('');
+                      } else {
+                        const num = Number(raw);
+                        if (num <= 1000000000000) {
+                          setAmount(num);
+                        }
+                      }
+                    }}
+                    placeholder="50,000,000"
+                    className="w-full pl-7 pr-7 p-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                    required
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 pointer-events-none">
+                    원
+                  </span>
+                </div>
               </div>
 
               {/* 영업 건명 / 제목 */}
