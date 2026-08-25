@@ -56,101 +56,6 @@ const STAGES: { id: PipelineStage; title: string; color: string; badge: string }
   { id: 'closed_lost', title: '8. 실패 / 드랍 (0%)', color: 'border-rose-200 bg-rose-50/40', badge: 'bg-rose-100 text-rose-700' },
 ];
 
-// 초기 기본 샘플 데이터
-const INITIAL_DEALS: Deal[] = [
-  {
-    id: 'deal-001',
-    deal_code: 'DEAL-2026-101',
-    title: '기업용 클라우드 CRM 구축 계약',
-    company: '테크노바 (Technova)',
-    partner_name: '씨앤에스 파트너스',
-    product_name: 'SalesFlow Enterprise V2',
-    pc_count: 120,
-    server_count: 8,
-    competitor_product: '글로벌 S사 CRM',
-    amount: 150000000,
-    lead_source: '홈페이지',
-    sales_rep_id: 'demo-sales-rep-01',
-    sales_rep_name: '김영업',
-    vendor: 'AWS',
-    deal_type: '신규',
-    probability: 80,
-    stage: 'negotiation',
-    received_date: '2026-07-01',
-    expected_close_date: '2026-08-30',
-    notes: '최종 단가 협상 단계. 다음 주 계약서 검토 예정.',
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: 'deal-002',
-    deal_code: 'DEAL-2026-102',
-    title: 'AI 영업 자동화 및 분석 모듈 도입',
-    company: '글로벌 로지스틱스',
-    partner_name: '한진 솔루션',
-    product_name: 'AI Analytics Pro',
-    pc_count: 50,
-    server_count: 2,
-    competitor_product: '타사 B인텔리전스',
-    amount: 85000000,
-    lead_source: '파트너',
-    sales_rep_id: 'demo-sales-rep-01',
-    sales_rep_name: '김영업',
-    vendor: 'Azure',
-    deal_type: '신규',
-    probability: 50,
-    stage: 'proposal',
-    received_date: '2026-07-10',
-    expected_close_date: '2026-08-15',
-    notes: '맞춤형 RFP 제안서 전송 완료. 기술 솔루션 미팅 대기.',
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: 'deal-003',
-    deal_code: 'DEAL-2026-103',
-    title: '스마트 물류 데이터 분석 시스템 구축',
-    company: '한성물류',
-    partner_name: '자사 직판',
-    product_name: 'IoT Logistics Suite',
-    pc_count: 200,
-    server_count: 16,
-    competitor_product: '자체 개발',
-    amount: 220000000,
-    lead_source: '지인소개',
-    sales_rep_id: 'demo-sales-rep-02',
-    sales_rep_name: '이수진',
-    vendor: 'Dell',
-    deal_type: '신규',
-    probability: 100,
-    stage: 'closed_won',
-    close_reason: 'PoC 기술 우수성 및 유지보수 가격 경쟁력',
-    received_date: '2026-06-15',
-    expected_close_date: '2026-08-01',
-    notes: '최종 계약 체결 완료. 9월 구축 시작.',
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: 'deal-004',
-    deal_code: 'DEAL-2026-104',
-    title: '보안 솔루션 연간 라이선스 연장',
-    company: '파이낸스원',
-    product_name: 'SecureGate Enterprise',
-    pc_count: 80,
-    server_count: 4,
-    amount: 45000000,
-    lead_source: '콜드콜',
-    sales_rep_id: 'demo-sales-rep-01',
-    sales_rep_name: '김영업',
-    vendor: '자사제품',
-    deal_type: '갱신',
-    probability: 30,
-    stage: 'contacted',
-    received_date: '2026-07-20',
-    expected_close_date: '2026-10-01',
-    notes: '초기 1차 미팅 완료. 요구사항 파악 중.',
-    created_at: new Date().toISOString(),
-  }
-];
-
 interface SalesPipelineProps {
   onNavigateToTable?: (filters: PipelineFilterOptions) => void;
 }
@@ -158,9 +63,9 @@ interface SalesPipelineProps {
 export const SalesPipeline: React.FC<SalesPipelineProps> = ({ onNavigateToTable }) => {
   const { profile, role } = useAuth();
 
-  // 딜 데이터 목록 상태
-  const [deals, setDeals] = useState<Deal[]>(INITIAL_DEALS);
-  const [loadingDB, setLoadingDB] = useState<boolean>(false);
+  // 딜 데이터 목록 상태 (초기 로딩 시 더미 데이터 깜빡임 방지를 위해 빈 배열로 시작)
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [loadingDB, setLoadingDB] = useState<boolean>(true);
 
   // 검색 및 담당자 필터
   const [searchTerm, setSearchTerm] = useState<string>('');
