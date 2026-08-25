@@ -590,38 +590,44 @@ export const SalesPipeline: React.FC<SalesPipelineProps> = ({ onNavigateToTable 
             const stageSum = stageDeals.reduce((sum, d) => sum + d.amount, 0);
             const isCollapsed = collapsedStages[stageMeta.id];
 
-            // 1) 컬럼이 접힌(Collapsed) 상태
+            // 1) 컬럼이 접힌(Collapsed) 상태 (상세 카드 1칸 높이로 컴팩트하게 표시)
             if (isCollapsed) {
               return (
                 <div
                   key={stageMeta.id}
                   onClick={() => toggleStageCollapse(stageMeta.id)}
-                  className={`w-14 shrink-0 rounded-2xl border transition-all cursor-pointer hover:border-blue-400 group py-4 px-2 flex flex-col items-center justify-between select-none ${stageMeta.color} h-[680px] shadow-2xs hover:shadow-sm`}
+                  className={`w-14 shrink-0 rounded-2xl border transition-all cursor-pointer hover:border-blue-400 group py-3 px-1.5 flex flex-col items-center justify-between select-none ${stageMeta.color} h-[210px] shadow-2xs hover:shadow-md hover:-translate-y-0.5`}
                   title={`[${stageMeta.title}] 클릭하여 펼치기 (총 ${stageDeals.length}건 / ₩${stageSum.toLocaleString('ko-KR')})`}
                 >
-                  <div className="flex flex-col items-center space-y-3">
+                  <div className="flex flex-col items-center space-y-1.5">
                     <button
                       type="button"
-                      className="p-1 rounded-lg bg-white/80 border border-slate-200 text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors"
+                      className="p-1 rounded-lg bg-white/90 border border-slate-200 text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors shadow-2xs"
+                      aria-label="컬럼 펼치기"
                     >
-                      <ChevronRight className="w-4 h-4" />
+                      <ChevronRight className="w-3.5 h-3.5" />
                     </button>
-                    <span className="text-[10px] font-extrabold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-full font-mono">
+                    <span className="text-[10px] font-extrabold text-blue-700 bg-blue-100/90 px-1.5 py-0.5 rounded-full font-mono">
                       {stageDeals.length}
                     </span>
                   </div>
 
                   {/* 세로 텍스트 단계명 */}
                   <div 
-                    className="text-xs font-bold text-slate-700 tracking-wider whitespace-nowrap"
+                    className="text-[11px] font-bold text-slate-700 tracking-wider whitespace-nowrap py-1"
                     style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
                   >
                     {stageMeta.title.replace(/\(.*?\)/g, '').trim()}
                   </div>
 
-                  <div className="text-center">
-                    <span className="text-[10px] font-bold text-slate-500 font-mono block">
-                      ₩{(stageSum / 100000000).toFixed(1)}억
+                  {/* 하단 금액 요약 */}
+                  <div className="text-center w-full overflow-hidden">
+                    <span className="text-[9px] font-extrabold text-slate-600 font-mono block truncate">
+                      {stageSum >= 100000000 
+                        ? `₩${(stageSum / 100000000).toFixed(1)}억` 
+                        : stageSum >= 10000 
+                        ? `₩${Math.round(stageSum / 10000).toLocaleString('ko-KR')}만` 
+                        : `₩${stageSum.toLocaleString('ko-KR')}`}
                     </span>
                   </div>
                 </div>
