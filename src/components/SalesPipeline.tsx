@@ -291,7 +291,7 @@ export const SalesPipeline: React.FC<SalesPipelineProps> = ({ onNavigateToTable 
     return deals.filter(deal => isDealVisibleToUser(deal, profile, role, profiles));
   }, [deals, profile, role, profiles]);
 
-  // 등록된 딜 상세 내역 기반으로 영업담당자 드롭다운 목록 동적 구성
+  // 등록된 딜 상세 내역 기반으로 영업담당자 드롭다운 목록 동적 구성 (실제 딜이 있는 담당자만)
   const repOptions = useMemo(() => {
     const repSet = new Set<string>();
     visibleDeals.forEach(d => {
@@ -300,12 +300,8 @@ export const SalesPipeline: React.FC<SalesPipelineProps> = ({ onNavigateToTable 
         if (clean) repSet.add(clean);
       }
     });
-    if (profile?.full_name) {
-      const clean = profile.full_name.replace(/\s*\(.*?\)/g, '').trim();
-      if (clean) repSet.add(clean);
-    }
-    return Array.from(repSet);
-  }, [visibleDeals, profile?.full_name]);
+    return Array.from(repSet).sort();
+  }, [visibleDeals]);
 
   // 선택된 기간 기준 가시 딜 목록
   const dateFilteredDeals = useMemo(() => {

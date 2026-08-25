@@ -60,7 +60,7 @@ export const Navbar: React.FC<{ activeTab: string; setActiveTab: (tab: string) =
         };
       case 'manager':
         return {
-          label: '영업 관리',
+          label: '총괄 매니저',
           bg: 'bg-purple-50 border-purple-200 text-purple-800',
           icon: <Briefcase className="w-3.5 h-3.5 mr-1 text-purple-600" />,
         };
@@ -87,7 +87,7 @@ export const Navbar: React.FC<{ activeTab: string; setActiveTab: (tab: string) =
     { id: 'pipeline-table', label: '파이프라인 현황', icon: ListFilter, roleRequired: null },
     { id: 'work-report', label: '영업 리포트', icon: FileText, roleRequired: null },
     { id: 'reports', label: '영업 현황', icon: BarChart3, roleRequired: null },
-    { id: 'analytics', label: '팀 성과 분석', icon: TrendingUp, roleRequired: ['dept_manager', 'manager', 'admin'] },
+    { id: 'analytics', label: '팀 성과 분석', icon: TrendingUp, roleRequired: ['dept_manager', 'manager', 'admin', 'viewer'] },
     { id: 'roles', label: '역할(Role) 관리', icon: Settings, roleRequired: ['admin'] },
   ];
 

@@ -318,27 +318,40 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
     }
   }, []);
 
-  // 벤더 목록 생성 (딜 상세 내역 기반 - Dell, AWS 제외)
+  // 권한(Role) 및 부서 기반 가시 딜 목록 계산
+  const visibleDeals = useMemo(() => {
+    return deals.filter(deal => isDealVisibleToUser(deal, profile, role, profiles));
+  }, [deals, profile, role, profiles]);
+
+  // 벤더 목록 생성 (실제 존재하는 딜 내역 기반)
   const vendorList = useMemo(() => {
     const set = new Set<string>();
     const excludedVendors = new Set(['Dell', 'AWS']);
-    deals.forEach(d => {
+    visibleDeals.forEach(d => {
       if (d.vendor && !excludedVendors.has(d.vendor)) {
-        set.add(d.vendor);
+        const v = d.vendor.trim();
+        if (v) set.add(v);
       }
     });
     // '기타' 항목이 있다면 맨 마지막으로 배치
     const list = Array.from(set).filter(v => v !== '기타').sort();
     if (set.has('기타')) list.push('기타');
     return list;
-  }, [deals]);
+  }, [visibleDeals]);
 
-  // 권한(Role) 및 부서 기반 가시 딜 목록 계산
-  const visibleDeals = useMemo(() => {
-    return deals.filter(deal => isDealVisibleToUser(deal, profile, role, profiles));
-  }, [deals, profile, role, profiles]);
+  // 구분 목록 생성 (실제 존재하는 딜 내역 기반)
+  const typeList = useMemo(() => {
+    const set = new Set<string>();
+    visibleDeals.forEach(d => {
+      if (d.deal_type) {
+        const t = d.deal_type.trim();
+        if (t) set.add(t);
+      }
+    });
+    return Array.from(set).sort();
+  }, [visibleDeals]);
 
-  // 영업담당자 목록 생성 (딜 상세 내역 기반)
+  // 영업담당자 목록 생성 (실제 존재하는 딜 내역 기반)
   const repOptions = useMemo(() => {
     const repSet = new Set<string>();
     visibleDeals.forEach(d => {
@@ -347,12 +360,8 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
         if (clean) repSet.add(clean);
       }
     });
-    if (profile?.full_name) {
-      const clean = profile.full_name.replace(/\s*\(.*?\)/g, '').trim();
-      if (clean) repSet.add(clean);
-    }
-    return Array.from(repSet);
-  }, [visibleDeals, profile?.full_name]);
+    return Array.from(repSet).sort();
+  }, [visibleDeals]);
 
   // 검색 및 상세 필터(단계 제외)가 적용된 기본 딜 목록
   const baseFilteredDeals = useMemo(() => {
@@ -850,19 +859,22 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
               </select>
             </div>
 
-            {/* 구분(신규/갱신) 필터 */}
-            <div className="flex items-center space-x-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
-              <span className="text-slate-500 text-[11px] font-semibold">구분:</span>
-              <select
-                value={selectedType}
-                onChange={(e) => setSelectedType(e.target.value)}
-                className="bg-transparent text-slate-800 font-bold focus:outline-none cursor-pointer"
-              >
-                <option value="all">전체 구분</option>
-                <option value="신규">신규</option>
-                <option value="갱신">갱신</option>
-              </select>
-            </div>
+            {/* 구분 필터 (실제 존재하는 데이터만 표시) */}
+            {typeList.length > 0 && (
+              <div className="flex items-center space-x-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+                <span className="text-slate-500 text-[11px] font-semibold">구분:</span>
+                <select
+                  value={selectedType}
+                  onChange={(e) => setSelectedType(e.target.value)}
+                  className="bg-transparent text-slate-800 font-bold focus:outline-none cursor-pointer"
+                >
+                  <option value="all">전체 구분</option>
+                  {typeList.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* 매출일 지연 딜 전용 토글 버튼 */}
             {overdueCount > 0 && (

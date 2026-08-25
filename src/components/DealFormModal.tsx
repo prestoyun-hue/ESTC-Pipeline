@@ -72,7 +72,9 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
   const isAdmin = role === 'admin';
   const isSalesRep = role === 'sales_rep';
   const isViewer = role === 'viewer';
-  const isManager = role === 'dept_manager' || role === 'manager';
+  const isDeptManager = role === 'dept_manager';
+  const isGeneralManager = role === 'manager';
+  const isManager = isDeptManager || isGeneralManager;
   const isManagerOrAdmin = isManager || isAdmin;
   const userDept = (profile?.department || '').trim();
 
@@ -402,10 +404,11 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
       ? (currentUserId || 'demo-sales-rep-id') 
       : (salesRepId || 'demo-user');
 
-    // 수정자 로그 이름 구성 (예: '박팀장 (영업 관리자)', '최관리 (관리자)', '김영업 (영업 담당)')
+    // 수정자 로그 이름 구성 (예: '박팀장 (부서 관리자)', '김총괄 (총괄 매니저)', '최관리 (시스템 관리자)', '김영업 (영업 담당)')
     let roleLabel = '영업 담당';
     if (role === 'admin') roleLabel = '시스템 관리자';
-    else if (role === 'manager') roleLabel = '영업 관리자';
+    else if (role === 'manager') roleLabel = '총괄 매니저';
+    else if (role === 'dept_manager') roleLabel = '부서 관리자';
     const updaterDisplayName = `${cleanCurrentName || finalSalesRepName} (${roleLabel})`;
 
     let updatedHistory: DealHistoryItem[] = [...historyList];
@@ -639,7 +642,8 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
 
     let roleLabel = '영업 담당';
     if (role === 'admin') roleLabel = '시스템 관리자';
-    else if (role === 'manager') roleLabel = '영업 관리자';
+    else if (role === 'manager') roleLabel = '총괄 매니저';
+    else if (role === 'dept_manager') roleLabel = '부서 관리자';
     const updaterDisplayName = `${cleanCurrentName || finalSalesRepName} (${roleLabel})`;
 
     const historyItem: DealHistoryItem = {
@@ -1041,9 +1045,9 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
                     profiles.forEach(p => {
                       if (p.role === 'admin') return; // 시스템 관리자는 제외
                       
-                      // [부서 관리자 / 매니저 필터링]
-                      // 매니저(dept_manager 또는 manager)인 경우 동일한 부서 소속 직원만 노출
-                      if (isManager && userDept) {
+                      // [부서 관리자 필터링]
+                      // 부서 관리자(dept_manager)인 경우 동일한 부서 소속 직원만 노출 (총괄 매니저 manager와 관리자 admin은 전사 부서 직원 선택 가능)
+                      if (isDeptManager && userDept) {
                         const pDept = (p.department || '').trim();
                         // 본인 계정이 아니면서 부서가 다르면 제외
                         if (pDept && pDept !== userDept && p.id !== currentUserId) {
@@ -1096,7 +1100,11 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
                     return reps.map((rep) => {
                       const isMe = rep.name === myCleanName;
                       const deptStr = rep.dept ? ` (${rep.dept})` : '';
-                      const roleStr = rep.role === 'manager' || rep.role === 'dept_manager' ? ' [매니저]' : '';
+                      const roleStr = rep.role === 'manager' 
+                        ? ' [총괄매니저]' 
+                        : rep.role === 'dept_manager' 
+                        ? ' [부서관리자]' 
+                        : '';
                       return (
                         <option key={rep.name} value={rep.name}>
                           {rep.name}{deptStr}{roleStr}{isMe ? ' - (현재 로그인)' : ''}
@@ -1110,14 +1118,14 @@ export const DealFormModal: React.FC<DealFormModalProps> = ({
                     영업담당 권한은 본인명의 딜만 생성/수정 가능합니다.
                   </p>
                 )}
-                {isManager && (
+                {isDeptManager && (
                   <p className="mt-1 text-[11px] text-blue-600 font-medium">
-                    매니저는 동일 부서({userDept || '소속 부서'}) 담당 직원만 지정할 수 있습니다.
+                    부서 관리자는 동일 부서({userDept || '소속 부서'}) 담당 직원만 지정할 수 있습니다.
                   </p>
                 )}
-                {isAdmin && (
+                {(isGeneralManager || isAdmin) && (
                   <p className="mt-1 text-[11px] text-blue-600 font-medium">
-                    시스템 관리자는 전 부서의 영업담당자를 자유롭게 지정할 수 있습니다.
+                    {isAdmin ? '시스템 관리자' : '총괄 매니저'}는 전 부서의 영업담당자를 자유롭게 지정할 수 있습니다.
                   </p>
                 )}
               </div>

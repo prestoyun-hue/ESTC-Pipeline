@@ -12,7 +12,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Deal, PipelineStage, UserProfile } from '../types';
+import { Deal, PipelineStage, UserProfile, UserRole } from '../types';
 import { fetchStoredDeals, subscribeToDealChanges, isOverdueDeal, deduplicateDeals, isDealVisibleToUser } from '../utils/dealStorage';
 import {
   WorkReportPreset,
@@ -51,10 +51,13 @@ import {
   ChevronRight,
   MessageSquare,
   Filter,
+  Building2,
   TrendingUp,
   TrendingDown,
   Minus
 } from 'lucide-react';
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
+import { DEMO_PROFILES } from '../context/AuthContext';
 
 // 파이프라인 단계 정의 (실제 파이프라인 8개 세부 단계와 100% 일치)
 const PIPELINE_STAGES: { id: PipelineStage; label: string; color: string }[] = [
@@ -96,11 +99,12 @@ export const SalesReportDashboard: React.FC = () => {
   const [startDate, setStartDate] = useState<string>(initialRange.startDate);
   const [endDate, setEndDate] = useState<string>(initialRange.endDate);
 
-  // 추가 서브 필터 (검색, 단계, 벤더, 구분, 담당자, 매출일지연)
+  // 추가 서브 필터 (검색, 단계, 벤더, 구분, 부서, 담당자, 매출일지연)
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedStage, setSelectedStage] = useState<string>('all');
   const [selectedVendor, setSelectedVendor] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
+  const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>('all');
   const [selectedRepFilter, setSelectedRepFilter] = useState<string>('all');
   const [onlyOverdue, setOnlyOverdue] = useState<boolean>(false);
 
@@ -166,31 +170,87 @@ export const SalesReportDashboard: React.FC = () => {
     setEndDate(range.endDate);
   };
 
-  // 프로필 목록 (부서 관리자 매핑용)
+  // 프로필 목록 (부서 관리자 및 부서 필터 매핑용)
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
 
   useEffect(() => {
-    try {
-      const savedAdminProfiles = localStorage.getItem('admin_user_profiles');
-      const savedPipelineProfiles = localStorage.getItem('sales_pipeline_profiles');
-      const targetSaved = savedAdminProfiles || savedPipelineProfiles;
-      if (targetSaved) {
-        const parsed = JSON.parse(targetSaved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setProfiles(parsed);
+    const fetchProfiles = async () => {
+      try {
+        let loaded: UserProfile[] = [];
+        if (isSupabaseConfigured && supabase) {
+          const { data, error } = await supabase.from('profiles').select('*');
+          if (!error && data && data.length > 0) {
+            loaded = data.map((item: any) => ({
+              id: item.id,
+              email: item.email,
+              full_name: item.full_name || item.name || '사용자',
+              department: item.department || '영업부',
+              role: (item.role as UserRole) || 'sales_rep',
+              is_disabled: !!item.is_disabled,
+              created_at: item.created_at,
+              updated_at: item.updated_at,
+            }));
+          }
         }
+        if (loaded.length === 0) {
+          const savedAdminProfiles = localStorage.getItem('admin_user_profiles');
+          const savedPipelineProfiles = localStorage.getItem('sales_pipeline_profiles');
+          const targetSaved = savedAdminProfiles || savedPipelineProfiles;
+          if (targetSaved) {
+            const parsed = JSON.parse(targetSaved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              loaded = parsed;
+            }
+          }
+        }
+        if (loaded.length === 0) {
+          loaded = DEMO_PROFILES;
+        }
+        setProfiles(loaded);
+      } catch (e) {
+        console.warn('프로필 로드 오류:', e);
+        setProfiles(DEMO_PROFILES);
       }
-    } catch (e) {
-      console.warn('프로필 로드 오류:', e);
-    }
+    };
+    fetchProfiles();
   }, []);
+
+  // 딜의 영업담당자 기반 부서 판별 헬퍼
+  const getDealDepartment = (deal: Deal, userProfiles: UserProfile[]): string => {
+    const repId = (deal.sales_rep_id || '').trim();
+    const repName = (deal.sales_rep_name || '').trim();
+    const cleanRepName = repName.replace(/\s*\(.*?\)/g, '').trim();
+
+    const matched = userProfiles.find(p => {
+      const pId = (p.id || '').trim();
+      const pName = (p.full_name || '').trim();
+      const cleanPName = pName.replace(/\s*\(.*?\)/g, '').trim();
+      return (
+        (repId && pId && repId === pId) ||
+        (repName && pName && repName === pName) ||
+        (cleanRepName && cleanPName && (cleanRepName.includes(cleanPName) || cleanPName.includes(cleanRepName)))
+      );
+    });
+
+    return (matched?.department || '').trim();
+  };
 
   // 권한 및 부서 기반 가시 딜 목록
   const visibleDeals = useMemo(() => {
     return deals.filter(deal => isDealVisibleToUser(deal, profile, role, profiles));
   }, [deals, profile, role, profiles]);
 
-  // 영업담당자 목록 추출
+  // 부서 목록 추출 (실제 존재하는 딜 내역 기반)
+  const departmentList = useMemo(() => {
+    const set = new Set<string>();
+    visibleDeals.forEach(deal => {
+      const dept = getDealDepartment(deal, profiles);
+      if (dept) set.add(dept);
+    });
+    return Array.from(set).sort();
+  }, [profiles, visibleDeals]);
+
+  // 전체 영업담당자 목록 추출 (실제 존재하는 딜 내역 기반)
   const repOptions = useMemo(() => {
     const set = new Set<string>();
     visibleDeals.forEach(d => {
@@ -202,7 +262,23 @@ export const SalesReportDashboard: React.FC = () => {
     return Array.from(set).sort();
   }, [visibleDeals]);
 
-  // 벤더 목록 추출
+  // 선택된 부서에 속한 영업담당자 목록 필터링 (실제 해당 부서 딜이 있는 담당자만)
+  const filteredRepOptions = useMemo(() => {
+    if (selectedDeptFilter === 'all') {
+      return repOptions;
+    }
+    const set = new Set<string>();
+    visibleDeals.forEach(d => {
+      const dealDept = getDealDepartment(d, profiles);
+      if (dealDept === selectedDeptFilter && d.sales_rep_name) {
+        const cleanName = d.sales_rep_name.trim();
+        if (cleanName) set.add(cleanName);
+      }
+    });
+    return Array.from(set).sort();
+  }, [repOptions, selectedDeptFilter, visibleDeals, profiles]);
+
+  // 벤더 목록 추출 (실제 존재하는 딜 내역 기반)
   const vendorList = useMemo(() => {
     const set = new Set<string>();
     visibleDeals.forEach(d => {
@@ -224,6 +300,14 @@ export const SalesReportDashboard: React.FC = () => {
   // =========================================================================
   const filteredDeals = useMemo(() => {
     return visibleDeals.filter(deal => {
+      // 0. 시스템 관리자/딜조회(뷰어)/매니저: 부서 필터 적용
+      if ((role === 'admin' || role === 'viewer' || role === 'manager') && selectedDeptFilter !== 'all') {
+        const dealDept = getDealDepartment(deal, profiles);
+        if (dealDept !== selectedDeptFilter) {
+          return false;
+        }
+      }
+
       // 1. 관리자 / 부서장 계정에서 영업 담당자 필터 적용 (role !== 'sales_rep')
       if (role !== 'sales_rep' && selectedRepFilter !== 'all') {
         const dealRepClean = (deal.sales_rep_name || '').replace(/\s*\(.*?\)/g, '').trim();
@@ -805,17 +889,39 @@ export const SalesReportDashboard: React.FC = () => {
           {/* 필터 세그먼트 Dropdown 그룹 */}
           <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto text-xs">
             
+            {/* 부서 필터 (시스템 관리자, 딜조회(뷰어), 매니저 권한 시 표시) */}
+            {(role === 'admin' || role === 'viewer' || role === 'manager') && (
+              <div className="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+                <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                <span className="text-slate-500 text-[11px] font-semibold">부서:</span>
+                <select
+                  value={selectedDeptFilter}
+                  onChange={(e) => {
+                    setSelectedDeptFilter(e.target.value);
+                    setSelectedRepFilter('all'); // 부서 변경 시 담당자 필터 초기화
+                  }}
+                  className="bg-transparent text-slate-800 font-bold focus:outline-none cursor-pointer"
+                >
+                  <option value="all">전체 부서</option>
+                  {departmentList.map(dept => (
+                    <option key={dept} value={dept}>{dept}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* 영업 담당자 필터 (영업담당 role === 'sales_rep' 일 때는 보이지 않음) */}
             {role !== 'sales_rep' && (
-              <div className="flex items-center space-x-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+              <div className="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+                <Filter className="w-3.5 h-3.5 text-slate-400" />
                 <span className="text-slate-500 text-[11px] font-semibold">담당자:</span>
                 <select
                   value={selectedRepFilter}
                   onChange={(e) => setSelectedRepFilter(e.target.value)}
                   className="bg-transparent text-slate-800 font-bold focus:outline-none cursor-pointer"
                 >
-                  <option value="all">전체 담당자</option>
-                  {repOptions.map(repName => (
+                  <option value="all">{selectedDeptFilter !== 'all' ? `${selectedDeptFilter} 전체 담당자` : '전체 담당자'}</option>
+                  {filteredRepOptions.map(repName => (
                     <option key={repName} value={repName}>{repName}</option>
                   ))}
                 </select>

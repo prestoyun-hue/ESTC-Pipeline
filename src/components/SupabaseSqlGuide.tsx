@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   full_name TEXT,
-  role TEXT NOT NULL DEFAULT 'sales_rep' CHECK (role IN ('admin', 'dept_manager', 'sales_rep', 'viewer')),
+  role TEXT NOT NULL DEFAULT 'sales_rep' CHECK (role IN ('admin', 'dept_manager', 'manager', 'sales_rep', 'viewer')),
   avatar_url TEXT,
   department TEXT DEFAULT '영업1팀',
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 -- 기존 테이블이 이미 존재하는 경우 CHECK 제약조건 업데이트 (마이그레이션용)
 -- ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
--- ALTER TABLE public.profiles ADD CONSTRAINT profiles_role_check CHECK (role IN ('admin', 'dept_manager', 'sales_rep', 'viewer'));
+-- ALTER TABLE public.profiles ADD CONSTRAINT profiles_role_check CHECK (role IN ('admin', 'dept_manager', 'manager', 'sales_rep', 'viewer'));
 
 -- 2. Row Level Security (RLS) 활성화
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
