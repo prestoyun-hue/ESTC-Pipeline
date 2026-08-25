@@ -525,11 +525,30 @@ export const AdminRoleManager: React.FC = () => {
     const newList = profilesList.map(p => (p.id === selectedUser.id ? updatedUser : p));
     updateProfilesStateAndStorage(newList);
 
-    // 2. Supabase DB에 upsert (update 대신 upsert를 사용하여 레코드가 없으면 자동 생성, 있으면 즉시 수정)
+    // 활성 세션(현재 로그인된 계정)과 일치하는 경우 활성 세션 정보도 즉시 갱신 및 전역 알림
+    try {
+      const activeSessionKey = 'crm_active_profile_session';
+      const activeSaved = localStorage.getItem(activeSessionKey);
+      if (activeSaved) {
+        const activeParsed = JSON.parse(activeSaved);
+        if (
+          activeParsed &&
+          (activeParsed.id === selectedUser.id ||
+            (activeParsed.email && activeParsed.email.trim().toLowerCase() === editEmail.trim().toLowerCase()))
+        ) {
+          const newActive = { ...activeParsed, ...updatedUser };
+          localStorage.setItem(activeSessionKey, JSON.stringify(newActive));
+        }
+      }
+      window.dispatchEvent(new CustomEvent('crm_profile_updated', { detail: updatedUser }));
+    } catch (sessionErr) {
+      console.warn('Active session sync error:', sessionErr);
+    }
+
+    // 2. Supabase DB에 저장 (이메일 및 ID 기준 update 우선 시도 후 upsert)
     if (isSupabaseConfigured) {
       try {
         const payload: any = {
-          id: targetUUID,
           email: editEmail.trim(),
           full_name: editFullName.trim(),
           name: editFullName.trim(),
@@ -545,25 +564,55 @@ export const AdminRoleManager: React.FC = () => {
           payload.password = selectedUser.password;
         }
 
-        let { error: upsertErr } = await supabase
-          .from('profiles')
-          .upsert([payload], { onConflict: 'id' });
+        // 1차 시도: 이메일 기준으로 기존 레코드 직접 UPDATE
+        let dbSaveSuccess = false;
+        let lastDbError: any = null;
 
-        if (upsertErr) {
-          console.warn('1st save user detail upsert warning:', upsertErr.message);
-          // 2차 시도: password, is_disabled 제외 기본 필드로 upsert
-          const { is_disabled, password, ...fallbackPayload } = payload;
-          const { error: retryErr } = await supabase
+        const { data: updatedByEmail, error: updateEmailErr } = await supabase
+          .from('profiles')
+          .update(payload)
+          .ilike('email', editEmail.trim())
+          .select();
+
+        if (!updateEmailErr && updatedByEmail && updatedByEmail.length > 0) {
+          dbSaveSuccess = true;
+        } else {
+          lastDbError = updateEmailErr;
+          
+          // 2차 시도: ID 기준 upsert
+          const upsertPayload = { ...payload, id: targetUUID };
+          let { error: upsertErr } = await supabase
             .from('profiles')
-            .upsert([fallbackPayload], { onConflict: 'id' });
-          upsertErr = retryErr;
+            .upsert([upsertPayload], { onConflict: 'id' });
+
+          if (upsertErr) {
+            lastDbError = upsertErr;
+            // password, is_disabled 제외 fallback
+            const { is_disabled, password, ...fallbackPayload } = upsertPayload;
+            const { error: retryErr } = await supabase
+              .from('profiles')
+              .upsert([fallbackPayload], { onConflict: 'id' });
+            if (!retryErr) {
+              dbSaveSuccess = true;
+              lastDbError = null;
+            } else {
+              lastDbError = retryErr;
+            }
+          } else {
+            dbSaveSuccess = true;
+            lastDbError = null;
+          }
         }
 
-        if (upsertErr) {
-          console.warn('Supabase user detail upsert final error:', upsertErr.message);
-          setMessage(`[안내] 사용자 프로필이 로컬에 반영되었습니다. (Supabase DB 스키마 갱신 필요)`);
-        } else {
-          setMessage(`[DB 동기화 성공] [${editFullName}] 사용자의 상세 정보 및 권한이 Supabase DB와 로컬에 정상 저장되었습니다.`);
+        if (dbSaveSuccess) {
+          setMessage(`[DB 동기화 성공] [${editFullName} (${editEmail})] 사용자의 권한이 '${editRole === 'manager' ? '총괄 매니저' : editRole}'로 Supabase DB와 로컬에 정상 저장되었습니다.`);
+        } else if (lastDbError) {
+          console.warn('Supabase profile update warning:', lastDbError);
+          if (lastDbError.message && (lastDbError.message.includes('profiles_role_check') || lastDbError.message.includes('violates check constraint'))) {
+            setMessage(`[DB 제약조건 오류] Supabase DB의 'profiles_role_check'에 'manager' 역할이 등록되지 않았습니다. 우측 상단 'DB 설정 SQL'에서 SQL 마이그레이션 쿼리를 실행해 주세요.`);
+          } else {
+            setMessage(`[안내] 사용자 프로필이 로컬에 저장되었습니다. (DB 알림: ${lastDbError.message})`);
+          }
         }
       } catch (e: any) {
         console.error('Supabase user detail update exception:', e);

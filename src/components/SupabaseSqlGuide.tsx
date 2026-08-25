@@ -130,6 +130,34 @@ export const SupabaseSqlGuide: React.FC = () => {
         </p>
       </div>
 
+      {/* 기존 DB 마이그레이션 SQL 박스 (총괄 매니저 role 추가용) */}
+      <div className="p-6 bg-purple-50/70 border border-purple-200 rounded-2xl space-y-3 shadow-2xs">
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-bold text-purple-900 flex items-center space-x-2">
+            <Database className="w-4 h-4 text-purple-600" />
+            <span>[기존 DB 마이그레이션] 총괄 매니저(manager) 역할 추가 SQL</span>
+          </h4>
+          <button
+            onClick={() => {
+              const migrationSql = `ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_role_check;\nALTER TABLE public.profiles ADD CONSTRAINT profiles_role_check CHECK (role IN ('admin', 'dept_manager', 'manager', 'sales_rep', 'viewer'));`;
+              navigator.clipboard.writeText(migrationSql);
+              alert('마이그레이션 SQL이 클립보드에 복사되었습니다. Supabase SQL Editor에서 실행해주세요.');
+            }}
+            className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[11px] font-bold transition-all flex items-center space-x-1 cursor-pointer"
+          >
+            <Copy className="w-3 h-3" />
+            <span>마이그레이션 SQL 복사</span>
+          </button>
+        </div>
+        <p className="text-xs text-purple-800 leading-relaxed font-medium">
+          이미 profiles 테이블이 생성되어 있는 경우, Supabase PostgreSQL 제약조건(Check Constraint)에 <code className="bg-white px-1.5 py-0.5 rounded border border-purple-200 text-purple-900 font-bold">'manager'</code>가 등록되어 있어야 오류 없이 저장됩니다. 아래 명령어를 Supabase SQL Editor에 붙여넣고 <span className="font-bold">Run</span> 버튼을 눌러주세요:
+        </p>
+        <pre className="p-3.5 bg-slate-900 text-purple-200 rounded-xl text-xs font-mono overflow-x-auto">
+ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
+ALTER TABLE public.profiles ADD CONSTRAINT profiles_role_check CHECK (role IN ('admin', 'dept_manager', 'manager', 'sales_rep', 'viewer'));
+        </pre>
+      </div>
+
       {/* SQL 스니펫 및 복사 버튼 */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xs">
         <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between">

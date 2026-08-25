@@ -234,8 +234,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         setLoading(true);
 
-        // 1) 로컬 스토리지에 저장된 활성 프로필 세션 확인
-        const savedSession = getStoredActiveSession();
+          // 1) 로컬 스토리지에 저장된 활성 프로필 세션 확인
+          let savedSession = getStoredActiveSession();
+
+          // 로컬 관리자 프로필 목록(crm_user_profiles_v2)과 대조하여 최신 역할/정보 동기화
+          if (savedSession && savedSession.email) {
+            const localLatest = findLocalProfileByEmail(savedSession.email);
+            if (localLatest) {
+              savedSession = {
+                ...savedSession,
+                ...localLatest,
+                role: localLatest.role || savedSession.role,
+                department: localLatest.department || savedSession.department,
+                full_name: localLatest.full_name || savedSession.full_name,
+              };
+              setStoredActiveSession(savedSession);
+            }
+          }
 
         // 2) Supabase Auth 세션 확인 (Supabase가 설정된 경우)
         if (isSupabaseConfigured) {
@@ -320,6 +335,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     initializeAuth();
 
+    // 프로필 변경 이벤트 리스너 (AdminRoleManager 등에서 변경 시 즉시 반영)
+    const handleProfileUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent<UserProfile>;
+      const updated = customEvent.detail;
+      if (updated && isMounted) {
+        setProfile(prev => {
+          if (!prev) return prev;
+          const isSameUser =
+            prev.id === updated.id ||
+            (prev.email && updated.email && prev.email.trim().toLowerCase() === updated.email.trim().toLowerCase());
+          if (isSameUser) {
+            const merged = { ...prev, ...updated };
+            setStoredActiveSession(merged);
+            return merged;
+          }
+          return prev;
+        });
+      }
+    };
+    window.addEventListener('crm_profile_updated', handleProfileUpdated);
+
     // Supabase Auth 세션 변화 이벤트 수신기 (로그인, 로그아웃, 토큰갱신 등)
     if (isSupabaseConfigured) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
@@ -365,10 +401,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return () => {
         isMounted = false;
         subscription.unsubscribe();
+        window.removeEventListener('crm_profile_updated', handleProfileUpdated);
       };
     } else {
       return () => {
         isMounted = false;
+        window.removeEventListener('crm_profile_updated', handleProfileUpdated);
       };
     }
   }, []);
