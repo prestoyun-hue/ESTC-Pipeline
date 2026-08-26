@@ -11,7 +11,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Deal, PipelineStage, UserRole, PipelineFilterOptions, UserProfile } from '../types';
-import { fetchStoredDeals, subscribeToDealChanges, removeDeal, deduplicateDeals, isOverdueDeal, isDealVisibleToUser } from '../utils/dealStorage';
+import {
+  fetchStoredDeals,
+  subscribeToDealChanges,
+  removeDeal,
+  deduplicateDeals,
+  isOverdueDeal,
+  isDealVisibleToUser,
+  getDealDepartment,
+  extractDepartmentList,
+  isDealInDepartment,
+  normalizeDept
+} from '../utils/dealStorage';
 import { DatePreset, DateTargetField, getDateRangeFromPreset, matchesDateRange, getKSTTodayString } from '../utils/dateFilter';
 import { DateFilterControl } from './DateFilterControl';
 
@@ -79,6 +90,7 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
   // 검색 및 필터 상태
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedStage, setSelectedStage] = useState<string>(initialStageFilter);
+  const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>(initialFilters?.selectedDeptFilter || 'all');
   const [selectedVendor, setSelectedVendor] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
   const [selectedRepFilter, setSelectedRepFilter] = useState<string>('all');
@@ -95,6 +107,7 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
     if (initialFilters) {
       if (initialFilters.stage !== undefined) setSelectedStage(initialFilters.stage);
       if (initialFilters.searchTerm !== undefined) setSearchTerm(initialFilters.searchTerm);
+      if (initialFilters.selectedDeptFilter !== undefined) setSelectedDeptFilter(initialFilters.selectedDeptFilter);
       if (initialFilters.selectedRepFilter !== undefined) setSelectedRepFilter(initialFilters.selectedRepFilter);
       if (initialFilters.datePreset !== undefined) setDatePreset(initialFilters.datePreset);
       if (initialFilters.dateTargetField !== undefined) setDateTargetField(initialFilters.dateTargetField);
@@ -170,25 +183,52 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
 
   useEffect(() => {
-    try {
-      const savedAdminProfiles = localStorage.getItem('admin_user_profiles');
-      const savedPipelineProfiles = localStorage.getItem('sales_pipeline_profiles');
-      const targetSaved = savedAdminProfiles || savedPipelineProfiles;
-      if (targetSaved) {
-        const parsed = JSON.parse(targetSaved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setProfiles(parsed);
+    const fetchProfiles = async () => {
+      try {
+        let loaded: UserProfile[] = [];
+        if (isSupabaseConfigured && supabase) {
+          const { data, error } = await supabase.from('profiles').select('*');
+          if (!error && data && data.length > 0) {
+            loaded = data.map((item: any) => ({
+              id: item.id,
+              email: item.email,
+              full_name: item.full_name || item.name || '사용자',
+              department: item.department || '영업부',
+              role: (item.role as any) || 'sales_rep',
+              is_disabled: !!item.is_disabled,
+              created_at: item.created_at,
+              updated_at: item.updated_at,
+            }));
+          }
         }
+        if (loaded.length === 0) {
+          const savedProfiles = localStorage.getItem('crm_user_profiles_v2') || localStorage.getItem('admin_user_profiles') || localStorage.getItem('sales_pipeline_profiles');
+          if (savedProfiles) {
+            const parsed = JSON.parse(savedProfiles);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              loaded = parsed;
+            }
+          }
+        }
+        if (loaded.length > 0) {
+          setProfiles(loaded);
+        }
+      } catch (e) {
+        console.warn('프로필 로드 오류:', e);
       }
-    } catch (e) {
-      console.warn('프로필 로드 오류:', e);
-    }
+    };
+    fetchProfiles();
   }, []);
 
   // 권한(Role) 및 부서 기반 가시 딜 목록 계산
   const visibleDeals = useMemo(() => {
     return deals.filter(deal => isDealVisibleToUser(deal, profile, role, profiles));
   }, [deals, profile, role, profiles]);
+
+  // 부서 목록 추출
+  const departmentList = useMemo(() => {
+    return extractDepartmentList(visibleDeals, profiles);
+  }, [visibleDeals, profiles]);
 
   // 벤더 목록 생성 (실제 존재하는 딜 내역 기반)
   const vendorList = useMemo(() => {
@@ -230,9 +270,31 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
     return Array.from(repSet).sort();
   }, [visibleDeals]);
 
+  // 선택된 부서에 속한 영업담당자 목록
+  const filteredRepOptions = useMemo(() => {
+    if (selectedDeptFilter === 'all') {
+      return repOptions;
+    }
+    const set = new Set<string>();
+    visibleDeals.forEach(d => {
+      if (isDealInDepartment(d, selectedDeptFilter, profiles) && d.sales_rep_name) {
+        const cleanName = d.sales_rep_name.replace(/\s*\(.*?\)/g, '').trim();
+        if (cleanName) set.add(cleanName);
+      }
+    });
+    return Array.from(set).sort();
+  }, [repOptions, selectedDeptFilter, visibleDeals, profiles]);
+
   // 검색 및 상세 필터(단계 제외)가 적용된 기본 딜 목록
   const baseFilteredDeals = useMemo(() => {
     return visibleDeals.filter(deal => {
+      // 0. 부서 필터
+      if (selectedDeptFilter !== 'all') {
+        if (!isDealInDepartment(deal, selectedDeptFilter, profiles)) {
+          return false;
+        }
+      }
+
       // 영업 담당자 필터 적용 (role이 sales_rep인 경우는 이미 visibleDeals에서 본인 것만 필터링됨)
       if (role !== 'sales_rep' && selectedRepFilter !== 'all') {
         const dealRepClean = (deal.sales_rep_name || '').replace(/\s*\(.*?\)/g, '').trim();
@@ -278,7 +340,7 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
 
       return true;
     });
-  }, [visibleDeals, role, selectedRepFilter, onlyOverdue, dateTargetField, startDate, endDate, searchTerm, selectedVendor, selectedType]);
+  }, [visibleDeals, role, selectedDeptFilter, selectedRepFilter, onlyOverdue, dateTargetField, startDate, endDate, searchTerm, selectedVendor, selectedType, profiles]);
 
   // 지연 딜 개수 계산 (현재 기본 필터 기준)
   const overdueCount = useMemo(() => {
@@ -678,6 +740,26 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
           {/* 필터 세그먼트 Dropdown 그룹 */}
           <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto text-xs">
             
+            {/* 부서 필터: 시스템 관리자 / 딜조회(뷰어) / 매니저 */}
+            {role !== 'sales_rep' && departmentList.length > 0 && (
+              <div className="flex items-center space-x-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+                <span className="text-slate-500 text-[11px] font-semibold">부서:</span>
+                <select
+                  value={selectedDeptFilter}
+                  onChange={(e) => {
+                    setSelectedDeptFilter(e.target.value);
+                    setSelectedRepFilter('all');
+                  }}
+                  className="bg-transparent text-slate-800 font-bold focus:outline-none cursor-pointer"
+                >
+                  <option value="all">전체 부서</option>
+                  {departmentList.map(dept => (
+                    <option key={dept} value={dept}>{dept}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* 영업 담당자 필터: 영업 담당(sales_rep) 로그인 시 숨김 */}
             {role !== 'sales_rep' && (
               <div className="flex items-center space-x-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
@@ -688,7 +770,7 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
                   className="bg-transparent text-slate-800 font-bold focus:outline-none cursor-pointer"
                 >
                   <option value="all">전체 담당자</option>
-                  {repOptions.map(repName => (
+                  {filteredRepOptions.map(repName => (
                     <option key={repName} value={repName}>{repName}</option>
                   ))}
                 </select>

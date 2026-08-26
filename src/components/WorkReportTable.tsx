@@ -12,7 +12,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Deal, PipelineStage, UserProfile } from '../types';
-import { fetchStoredDeals, subscribeToDealChanges, deduplicateDeals, isDealVisibleToUser } from '../utils/dealStorage';
+import {
+  fetchStoredDeals,
+  subscribeToDealChanges,
+  deduplicateDeals,
+  isDealVisibleToUser,
+  getDealDepartment,
+  extractDepartmentList,
+  isDealInDepartment,
+  normalizeDept
+} from '../utils/dealStorage';
 import { WorkReportPreset, getWorkReportDateRange, formatDateToYMD, getKSTNow } from '../utils/dateFilter';
 import { DealFormModal } from './DealFormModal';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
@@ -159,11 +168,9 @@ export const WorkReportTable: React.FC = () => {
           }
         }
         if (loaded.length === 0) {
-          const savedAdminProfiles = localStorage.getItem('admin_user_profiles');
-          const savedPipelineProfiles = localStorage.getItem('sales_pipeline_profiles');
-          const targetSaved = savedAdminProfiles || savedPipelineProfiles;
-          if (targetSaved) {
-            const parsed = JSON.parse(targetSaved);
+          const savedProfiles = localStorage.getItem('crm_user_profiles_v2') || localStorage.getItem('admin_user_profiles') || localStorage.getItem('sales_pipeline_profiles');
+          if (savedProfiles) {
+            const parsed = JSON.parse(savedProfiles);
             if (Array.isArray(parsed) && parsed.length > 0) {
               loaded = parsed;
             }
@@ -181,39 +188,14 @@ export const WorkReportTable: React.FC = () => {
     fetchProfiles();
   }, []);
 
-  // 딜의 영업담당자 기반 부서 판별 헬퍼
-  const getDealDepartment = (deal: Deal, userProfiles: UserProfile[]): string => {
-    const repId = (deal.sales_rep_id || '').trim();
-    const repName = (deal.sales_rep_name || '').trim();
-    const cleanRepName = repName.replace(/\s*\(.*?\)/g, '').trim();
-
-    const matched = userProfiles.find(p => {
-      const pId = (p.id || '').trim();
-      const pName = (p.full_name || '').trim();
-      const cleanPName = pName.replace(/\s*\(.*?\)/g, '').trim();
-      return (
-        (repId && pId && repId === pId) ||
-        (repName && pName && repName === pName) ||
-        (cleanRepName && cleanPName && (cleanRepName.includes(cleanPName) || cleanPName.includes(cleanRepName)))
-      );
-    });
-
-    return (matched?.department || '').trim();
-  };
-
   // 권한에 따른 기본 가시 딜 목록
   const visibleDeals = useMemo(() => {
     return deals.filter(deal => isDealVisibleToUser(deal, profile, role, profiles));
   }, [deals, profile, role, profiles]);
 
-  // 부서 목록 추출 (실제 존재하는 딜 내역 기반)
+  // 부서 목록 추출 (실제 존재하는 딜 및 프로필 내역 기반)
   const departmentList = useMemo(() => {
-    const set = new Set<string>();
-    visibleDeals.forEach(deal => {
-      const dept = getDealDepartment(deal, profiles);
-      if (dept) set.add(dept);
-    });
-    return Array.from(set).sort();
+    return extractDepartmentList(visibleDeals, profiles);
   }, [profiles, visibleDeals]);
 
   // 전체 영업담당자 목록 추출 (실제 존재하는 딜 내역 기반)
@@ -235,8 +217,7 @@ export const WorkReportTable: React.FC = () => {
     }
     const set = new Set<string>();
     visibleDeals.forEach(d => {
-      const dealDept = getDealDepartment(d, profiles);
-      if (dealDept === selectedDept && d.sales_rep_name) {
+      if (isDealInDepartment(d, selectedDept, profiles) && d.sales_rep_name) {
         const cleanName = d.sales_rep_name.trim();
         if (cleanName) set.add(cleanName);
       }
@@ -257,10 +238,9 @@ export const WorkReportTable: React.FC = () => {
       if (startDate && updateDateStr < startDate) return false;
       if (endDate && updateDateStr > endDate) return false;
 
-      // 1.5. 부서 필터 (시스템 관리자, 딜조회(뷰어), 매니저)
-      if ((role === 'admin' || role === 'viewer' || role === 'manager') && selectedDept !== 'all') {
-        const dealDept = getDealDepartment(deal, profiles);
-        if (dealDept !== selectedDept) {
+      // 1.5. 부서 필터
+      if (selectedDept !== 'all') {
+        if (!isDealInDepartment(deal, selectedDept, profiles)) {
           return false;
         }
       }
@@ -302,7 +282,7 @@ export const WorkReportTable: React.FC = () => {
       const dateB = b.updated_at || b.created_at || '';
       return dateB.localeCompare(dateA);
     });
-  }, [visibleDeals, startDate, endDate, selectedRep, searchTerm]);
+  }, [visibleDeals, startDate, endDate, selectedDept, selectedRep, searchTerm, profiles, role]);
 
   // 요약 통계
   const stats = useMemo(() => {

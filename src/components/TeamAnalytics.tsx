@@ -12,7 +12,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Deal, UserProfile } from '../types';
-import { fetchStoredDeals, subscribeToDealChanges, deduplicateDeals, isDealVisibleToUser } from '../utils/dealStorage';
+import { fetchStoredDeals, subscribeToDealChanges, deduplicateDeals, isDealVisibleToUser, extractDepartmentList, isDealInDepartment } from '../utils/dealStorage';
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { getKSTNow, matchesDateRange, DateTargetField } from '../utils/dateFilter';
 import {
   TrendingUp,
@@ -125,24 +126,49 @@ export const TeamAnalytics: React.FC = () => {
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
 
   useEffect(() => {
-    try {
-      const savedAdminProfiles = localStorage.getItem('admin_user_profiles');
-      const savedPipelineProfiles = localStorage.getItem('sales_pipeline_profiles');
-      const targetSaved = savedAdminProfiles || savedPipelineProfiles;
-      if (targetSaved) {
-        const parsed = JSON.parse(targetSaved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setProfiles(parsed);
+    const fetchProfiles = async () => {
+      try {
+        let loaded: UserProfile[] = [];
+        if (isSupabaseConfigured && supabase) {
+          const { data, error } = await supabase.from('profiles').select('*');
+          if (!error && data && data.length > 0) {
+            loaded = data.map((item: any) => ({
+              id: item.id,
+              email: item.email,
+              full_name: item.full_name || item.name || '사용자',
+              department: item.department || '영업부',
+              role: (item.role as any) || 'sales_rep',
+              is_disabled: !!item.is_disabled,
+              created_at: item.created_at,
+              updated_at: item.updated_at,
+            }));
+          }
         }
+        if (loaded.length === 0) {
+          const savedProfiles = localStorage.getItem('crm_user_profiles_v2') || localStorage.getItem('admin_user_profiles') || localStorage.getItem('sales_pipeline_profiles');
+          if (savedProfiles) {
+            const parsed = JSON.parse(savedProfiles);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              loaded = parsed;
+            }
+          }
+        }
+        if (loaded.length > 0) {
+          setProfiles(loaded);
+        }
+      } catch (e) {
+        console.warn('프로필 로드 오류:', e);
       }
-    } catch (e) {
-      console.warn('프로필 로드 오류:', e);
-    }
+    };
+    fetchProfiles();
   }, []);
 
   // 2. 기간 선택 필터 상태 (월 / 분기 / 연)
   const [periodType, setPeriodType] = useState<AnalyticsPeriodType>('month');
   
+  // 부서 필터 상태
+  const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>('all');
+
   // 기준 연도, 월, 분기
   const now = getKSTNow();
   const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear());
@@ -248,10 +274,23 @@ export const TeamAnalytics: React.FC = () => {
     return deals.filter(deal => isDealVisibleToUser(deal, profile, role, profiles));
   }, [deals, profile, role, profiles]);
 
-  // 3. 기간 필터링 적용된 실데이터
+  // 부서 목록 추출
+  const departmentList = useMemo(() => {
+    return extractDepartmentList(visibleDeals, profiles);
+  }, [visibleDeals, profiles]);
+
+  // 3. 기간 및 부서 필터링 적용된 실데이터
   const filteredDeals = useMemo(() => {
-    return visibleDeals.filter(deal => matchesDateRange(deal, dateTargetField, startDate, endDate));
-  }, [visibleDeals, dateTargetField, startDate, endDate]);
+    return visibleDeals.filter(deal => {
+      // 부서 필터
+      if (selectedDeptFilter !== 'all') {
+        if (!isDealInDepartment(deal, selectedDeptFilter, profiles)) {
+          return false;
+        }
+      }
+      return matchesDateRange(deal, dateTargetField, startDate, endDate);
+    });
+  }, [visibleDeals, selectedDeptFilter, dateTargetField, startDate, endDate, profiles]);
 
   // 4. 수주 실적 실데이터 핵심 지표 계산
   
@@ -482,6 +521,23 @@ export const TeamAnalytics: React.FC = () => {
                 <option value="received_date">등록일</option>
               </select>
             </div>
+
+            {/* 부서 필터 */}
+            {role !== 'sales_rep' && departmentList.length > 0 && (
+              <div className="flex items-center space-x-1 bg-white px-2.5 py-1 rounded-xl border border-slate-200">
+                <span className="text-slate-500 text-[11px] font-semibold">부서:</span>
+                <select
+                  value={selectedDeptFilter}
+                  onChange={(e) => setSelectedDeptFilter(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer"
+                >
+                  <option value="all">전체 부서</option>
+                  {departmentList.map(dept => (
+                    <option key={dept} value={dept}>{dept}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* 특정 연도/월/분기 직접 셀렉트 및 탐색 */}

@@ -8,6 +8,96 @@ import { getKSTTodayString } from './dateFilter';
  * - dept_manager: 본인 소속 부서(department)와 동일한 부서 소속 영업담당자의 딜만 조회 가능
  * - sales_rep: 본인(id 또는 이름)이 담당자인 딜만 조회 가능
  */
+export const normalizeDept = (dept: string): string => {
+  if (!dept) return '';
+  return dept.replace(/\s+/g, '').trim().toLowerCase();
+};
+
+/**
+ * 딜의 소속 부서 판별 함수
+ */
+export const getDealDepartment = (deal: Deal, allProfiles: UserProfile[] = []): string => {
+  // 1. 딜 자체에 department 필드가 있는 경우
+  if ((deal as any).department && typeof (deal as any).department === 'string' && (deal as any).department.trim()) {
+    return (deal as any).department.trim();
+  }
+
+  const repId = (deal.sales_rep_id || '').trim();
+  const repName = (deal.sales_rep_name || '').trim();
+  const cleanRepName = repName.replace(/\s*\(.*?\)/g, '').trim();
+
+  // 2. sales_rep_name에 괄호로 부서가 적혀있는 경우 (예: "김영업 (영업 1팀)")
+  const matchParens = repName.match(/\((.*?)\)/);
+  if (matchParens && matchParens[1]) {
+    const inside = matchParens[1].trim();
+    if (!inside.includes('관리자') && !inside.includes('매니저') && !inside.includes('담당')) {
+      if (inside.includes('팀') || inside.includes('부') || inside.includes('본부') || inside.includes('실') || inside.includes('센터')) {
+        return inside;
+      }
+    }
+  }
+
+  // 3. allProfiles 목록에서 매칭
+  let targetProfiles = allProfiles;
+  if (!targetProfiles || targetProfiles.length === 0) {
+    try {
+      const saved = localStorage.getItem('crm_user_profiles_v2') || localStorage.getItem('admin_user_profiles');
+      if (saved) {
+        targetProfiles = JSON.parse(saved);
+      }
+    } catch {
+      targetProfiles = [];
+    }
+  }
+
+  const matched = targetProfiles.find(p => {
+    const pId = (p.id || '').trim();
+    const pName = (p.full_name || '').trim();
+    const cleanPName = pName.replace(/\s*\(.*?\)/g, '').trim();
+    return (
+      (repId && pId && repId === pId) ||
+      (repName && pName && repName === pName) ||
+      (cleanRepName && cleanPName && (cleanRepName === cleanPName || cleanRepName.includes(cleanPName) || cleanPName.includes(cleanRepName)))
+    );
+  });
+
+  if (matched && matched.department && matched.department.trim()) {
+    return matched.department.trim();
+  }
+
+  return '영업 1팀';
+};
+
+/**
+ * 딜이 특정 선택된 부서 필터에 해당하는지 검사
+ */
+export const isDealInDepartment = (
+  deal: Deal,
+  selectedDept: string,
+  allProfiles: UserProfile[] = []
+): boolean => {
+  if (!selectedDept || selectedDept === 'all') return true;
+  const dealDept = getDealDepartment(deal, allProfiles);
+  return normalizeDept(dealDept) === normalizeDept(selectedDept);
+};
+
+/**
+ * 현재 가시 딜 목록에서 실제 딜(건수)이 존재하는 고유 부서 목록만 추출
+ */
+export const extractDepartmentList = (deals: Deal[], profiles: UserProfile[] = []): string[] => {
+  const set = new Set<string>();
+  
+  // 실제 딜 목록에서만 부서 추출 (딜이 없는 부서는 표시하지 않음)
+  deals.forEach(deal => {
+    const dept = getDealDepartment(deal, profiles);
+    if (dept && dept.trim()) {
+      set.add(dept.trim());
+    }
+  });
+
+  return Array.from(set).sort();
+};
+
 export const isDealVisibleToUser = (
   deal: Deal,
   profile: UserProfile | null,
@@ -57,19 +147,9 @@ export const isDealVisibleToUser = (
     );
     if (isMyOwnDeal) return true;
 
-    // 해당 딜의 영업 담당자 프로필 탐색
-    const repProfile = allProfiles.find(p => {
-      const pId = (p.id || '').trim();
-      const pName = (p.full_name || '').trim();
-      const cleanPName = pName.replace(/\s*\(.*?\)/g, '').trim();
-      return (
-        (repId && pId && repId === pId) ||
-        (repName && pName && repName === pName) ||
-        (repName && cleanPName && (repName.includes(cleanPName) || cleanPName.includes(repName)))
-      );
-    });
-
-    if (repProfile && (repProfile.department || '').trim() === myDept) {
+    // 해당 딜의 부서 판별 및 매칭
+    const dealDept = getDealDepartment(deal, allProfiles);
+    if (normalizeDept(dealDept) === normalizeDept(myDept)) {
       return true;
     }
 

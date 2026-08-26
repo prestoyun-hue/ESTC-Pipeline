@@ -13,7 +13,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Deal, PipelineStage, UserProfile, UserRole } from '../types';
-import { fetchStoredDeals, subscribeToDealChanges, isOverdueDeal, deduplicateDeals, isDealVisibleToUser } from '../utils/dealStorage';
+import {
+  fetchStoredDeals,
+  subscribeToDealChanges,
+  isOverdueDeal,
+  deduplicateDeals,
+  isDealVisibleToUser,
+  getDealDepartment,
+  extractDepartmentList,
+  isDealInDepartment,
+  normalizeDept
+} from '../utils/dealStorage';
 import {
   WorkReportPreset,
   DateTargetField,
@@ -193,11 +203,9 @@ export const SalesReportDashboard: React.FC = () => {
           }
         }
         if (loaded.length === 0) {
-          const savedAdminProfiles = localStorage.getItem('admin_user_profiles');
-          const savedPipelineProfiles = localStorage.getItem('sales_pipeline_profiles');
-          const targetSaved = savedAdminProfiles || savedPipelineProfiles;
-          if (targetSaved) {
-            const parsed = JSON.parse(targetSaved);
+          const savedProfiles = localStorage.getItem('crm_user_profiles_v2') || localStorage.getItem('admin_user_profiles') || localStorage.getItem('sales_pipeline_profiles');
+          if (savedProfiles) {
+            const parsed = JSON.parse(savedProfiles);
             if (Array.isArray(parsed) && parsed.length > 0) {
               loaded = parsed;
             }
@@ -215,39 +223,14 @@ export const SalesReportDashboard: React.FC = () => {
     fetchProfiles();
   }, []);
 
-  // 딜의 영업담당자 기반 부서 판별 헬퍼
-  const getDealDepartment = (deal: Deal, userProfiles: UserProfile[]): string => {
-    const repId = (deal.sales_rep_id || '').trim();
-    const repName = (deal.sales_rep_name || '').trim();
-    const cleanRepName = repName.replace(/\s*\(.*?\)/g, '').trim();
-
-    const matched = userProfiles.find(p => {
-      const pId = (p.id || '').trim();
-      const pName = (p.full_name || '').trim();
-      const cleanPName = pName.replace(/\s*\(.*?\)/g, '').trim();
-      return (
-        (repId && pId && repId === pId) ||
-        (repName && pName && repName === pName) ||
-        (cleanRepName && cleanPName && (cleanRepName.includes(cleanPName) || cleanPName.includes(cleanRepName)))
-      );
-    });
-
-    return (matched?.department || '').trim();
-  };
-
   // 권한 및 부서 기반 가시 딜 목록
   const visibleDeals = useMemo(() => {
     return deals.filter(deal => isDealVisibleToUser(deal, profile, role, profiles));
   }, [deals, profile, role, profiles]);
 
-  // 부서 목록 추출 (실제 존재하는 딜 내역 기반)
+  // 부서 목록 추출 (실제 존재하는 딜 및 프로필 목록 기반)
   const departmentList = useMemo(() => {
-    const set = new Set<string>();
-    visibleDeals.forEach(deal => {
-      const dept = getDealDepartment(deal, profiles);
-      if (dept) set.add(dept);
-    });
-    return Array.from(set).sort();
+    return extractDepartmentList(visibleDeals, profiles);
   }, [profiles, visibleDeals]);
 
   // 전체 영업담당자 목록 추출 (실제 존재하는 딜 내역 기반)
@@ -269,8 +252,7 @@ export const SalesReportDashboard: React.FC = () => {
     }
     const set = new Set<string>();
     visibleDeals.forEach(d => {
-      const dealDept = getDealDepartment(d, profiles);
-      if (dealDept === selectedDeptFilter && d.sales_rep_name) {
+      if (isDealInDepartment(d, selectedDeptFilter, profiles) && d.sales_rep_name) {
         const cleanName = d.sales_rep_name.trim();
         if (cleanName) set.add(cleanName);
       }
@@ -300,10 +282,9 @@ export const SalesReportDashboard: React.FC = () => {
   // =========================================================================
   const filteredDeals = useMemo(() => {
     return visibleDeals.filter(deal => {
-      // 0. 시스템 관리자/딜조회(뷰어)/매니저: 부서 필터 적용
-      if ((role === 'admin' || role === 'viewer' || role === 'manager') && selectedDeptFilter !== 'all') {
-        const dealDept = getDealDepartment(deal, profiles);
-        if (dealDept !== selectedDeptFilter) {
+      // 0. 부서 필터 적용
+      if (selectedDeptFilter !== 'all') {
+        if (!isDealInDepartment(deal, selectedDeptFilter, profiles)) {
           return false;
         }
       }
@@ -361,7 +342,7 @@ export const SalesReportDashboard: React.FC = () => {
 
       return true;
     });
-  }, [visibleDeals, role, selectedRepFilter, onlyOverdue, dateTargetField, startDate, endDate, selectedStage, selectedVendor, selectedType, searchTerm]);
+  }, [visibleDeals, role, selectedDeptFilter, selectedRepFilter, onlyOverdue, dateTargetField, startDate, endDate, selectedStage, selectedVendor, selectedType, searchTerm, profiles]);
 
   // =========================================================================
   // [전 기간(Previous Period) 대비 증감률 계산 로직]
@@ -401,6 +382,16 @@ export const SalesReportDashboard: React.FC = () => {
     if (!prevPeriodRange.prevStartDate || !prevPeriodRange.prevEndDate) return [];
     
     return deals.filter(deal => {
+      // 0. 권한 가시성 체크
+      if (!isDealVisibleToUser(deal, profile, role, profiles)) return false;
+
+      // 0.5 부서 필터
+      if (selectedDeptFilter !== 'all') {
+        if (!isDealInDepartment(deal, selectedDeptFilter, profiles)) {
+          return false;
+        }
+      }
+
       // 1. 영업 담당 권한
       if (role === 'sales_rep') {
         const repName = (deal.sales_rep_name || '').trim();
@@ -472,7 +463,7 @@ export const SalesReportDashboard: React.FC = () => {
 
       return true;
     });
-  }, [deals, role, profile?.id, profile?.full_name, selectedRepFilter, onlyOverdue, dateTargetField, prevPeriodRange, selectedStage, selectedVendor, selectedType, searchTerm]);
+  }, [deals, role, profile, selectedDeptFilter, selectedRepFilter, onlyOverdue, dateTargetField, prevPeriodRange, selectedStage, selectedVendor, selectedType, searchTerm, profiles]);
 
   // =========================================================================
   // [KPI 요약 데이터 계산: 통화, 미팅, 이메일, 기타 및 전 기간 대비 증감률]

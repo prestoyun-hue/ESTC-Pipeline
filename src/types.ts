@@ -95,6 +95,7 @@ export type DateTargetField = 'expected_close_date' | 'received_date' | 'created
 export interface PipelineFilterOptions {
   stage?: string;
   searchTerm?: string;
+  selectedDeptFilter?: string;
   selectedRepFilter?: string;
   datePreset?: DatePreset;
   dateTargetField?: DateTargetField;
