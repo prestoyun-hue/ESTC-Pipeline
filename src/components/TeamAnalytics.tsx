@@ -33,7 +33,9 @@ import {
   Briefcase,
   ArrowUpRight,
   Layers,
-  Clock
+  Clock,
+  Building2,
+  Filter
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -508,8 +510,9 @@ export const TeamAnalytics: React.FC = () => {
               </button>
             </div>
 
-            {/* 날짜 필터 대상 선택 */}
-            <div className="flex items-center space-x-1 bg-white px-2.5 py-1 rounded-xl border border-slate-200">
+            {/* 날짜 필터 대상 선택 (기준) */}
+            <div className="flex items-center space-x-1.5 bg-white px-2.5 py-1 rounded-xl border border-slate-200 shadow-2xs">
+              <Clock className="w-3.5 h-3.5 text-slate-400" />
               <span className="text-slate-500 text-[11px] font-semibold">기준:</span>
               <select
                 value={dateTargetField}
@@ -522,9 +525,10 @@ export const TeamAnalytics: React.FC = () => {
               </select>
             </div>
 
-            {/* 부서 필터 */}
+            {/* 부서 필터: 기준 선택 바로 오른쪽에 자연스럽게 정렬 */}
             {role !== 'sales_rep' && departmentList.length > 0 && (
-              <div className="flex items-center space-x-1 bg-white px-2.5 py-1 rounded-xl border border-slate-200">
+              <div className="flex items-center space-x-1.5 bg-white px-2.5 py-1 rounded-xl border border-slate-200 shadow-2xs">
+                <Building2 className="w-3.5 h-3.5 text-slate-400" />
                 <span className="text-slate-500 text-[11px] font-semibold">부서:</span>
                 <select
                   value={selectedDeptFilter}

@@ -458,32 +458,39 @@ export const SalesPipelineTable: React.FC<SalesPipelineTableProps> = ({
   // CSV 단순 Export 기능
   const exportToCSV = () => {
     if (filteredDeals.length === 0) return;
-    const headers = ['Deal-ID', '고객사', '영업건명', '영업담당자', '벤더', '파트너', '제품명', 'PC수량', 'Server수량', '금액(원)', '단계', '수주/실패사유', '접수일', '예상매출일'];
-    const rows = filteredDeals.map(d => [
-      d.deal_code || d.id,
-      `"${d.company}"`,
-      `"${d.title}"`,
-      `"${d.sales_rep_name}"`,
-      `"${d.vendor || ''}"`,
-      `"${d.partner_name || ''}"`,
-      `"${d.product_name || ''}"`,
-      d.pc_count || 0,
-      d.server_count || 0,
-      d.amount,
-      d.stage,
-      `"${(d.close_reason || '').replace(/"/g, '""')}"`,
-      d.received_date || '',
-      d.expected_close_date || ''
-    ]);
+    const headers = ['Deal-ID', '고객사', '영업건명', '구분(신규/갱신)', '영업담당자', '벤더', '파트너', '제품명', 'PC수량', 'Server수량', '금액(원)', '진행단계', '수주/실패사유', '접수일', '예상매출일'];
+    const rows = filteredDeals.map(d => {
+      const stageBadge = getStageBadge(d.stage);
+      const stageLabel = stageBadge?.label || d.stage;
+      return [
+        d.deal_code || d.id,
+        `"${(d.company || '').replace(/"/g, '""')}"`,
+        `"${(d.title || '').replace(/"/g, '""')}"`,
+        `"${(d.deal_type || '신규').replace(/"/g, '""')}"`,
+        `"${(d.sales_rep_name || '').replace(/"/g, '""')}"`,
+        `"${(d.vendor || '').replace(/"/g, '""')}"`,
+        `"${(d.partner_name || '').replace(/"/g, '""')}"`,
+        `"${(d.product_name || '').replace(/"/g, '""')}"`,
+        d.pc_count || 0,
+        d.server_count || 0,
+        d.amount,
+        `"${stageLabel.replace(/"/g, '""')}"`,
+        `"${(d.close_reason || '').replace(/"/g, '""')}"`,
+        d.received_date || '',
+        d.expected_close_date || ''
+      ];
+    });
 
-    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
+    link.setAttribute('href', url);
     link.setAttribute('download', `영업파이프라인_목록_${getKSTTodayString()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
